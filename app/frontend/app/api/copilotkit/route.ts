@@ -46,14 +46,17 @@ import {
 import { NextRequest } from "next/server";
 
 /**
- * IMPORTANT:
- * - We do NOT register any agents here
- * - The real agent runs on Vertex AI Agent Engine
- * - This route simply proxies CopilotKit → Agent Engine
+ * CopilotKit → Vertex AI Agent Engine (AG-UI)
+ * - Agent runs remotely on Agent Engine
+ * - This route only proxies requests
+ * - defaultAgent is REQUIRED for AG-UI discovery
  */
 
 const runtime = new CopilotRuntime({
-  agents: {}, // ✅ REQUIRED: empty for remote agents
+  agents: {},
+
+  // 🔑 REQUIRED: must match ADK app_name
+  defaultAgent: "locus",
 });
 
 const serviceAdapter = new ExperimentalEmptyAdapter();
