@@ -42,34 +42,23 @@ import {
   CopilotRuntime,
   ExperimentalEmptyAdapter,
   copilotRuntimeNextJSAppRouterEndpoint,
-  LangGraphHttpAgent,
 } from "@copilotkit/runtime";
 import { NextRequest } from "next/server";
 
 /**
  * IMPORTANT:
- * - No localhost
- * - No REMOTE_ACTION_URL
- * - Only Agent Engine endpoint
+ * - We do NOT register any agents here
+ * - The real agent runs on Vertex AI Agent Engine
+ * - This route simply proxies CopilotKit → Agent Engine
  */
 
-const AGENT_ENGINE_ENDPOINT = process.env.AGENT_ENGINE_ENDPOINT;
-
-if (!AGENT_ENGINE_ENDPOINT) {
-  throw new Error("AGENT_ENGINE_ENDPOINT is not set");
-}
-
 const runtime = new CopilotRuntime({
-  agents: {
-    locus: new LangGraphHttpAgent({
-      url: AGENT_ENGINE_ENDPOINT,
-    }),
-  },
+  agents: {}, // ✅ REQUIRED: empty for remote agents
 });
 
 const serviceAdapter = new ExperimentalEmptyAdapter();
 
-export async function POST(req: NextRequest) {
+export const POST = async (req: NextRequest) => {
   const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
     runtime,
     serviceAdapter,
@@ -77,4 +66,4 @@ export async function POST(req: NextRequest) {
   });
 
   return handleRequest(req);
-}
+};
