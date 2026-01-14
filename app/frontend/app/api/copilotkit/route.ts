@@ -45,18 +45,15 @@ import {
 } from "@copilotkit/runtime";
 import { NextRequest } from "next/server";
 
-/**
- * CopilotKit → Vertex AI Agent Engine (AG-UI)
- * - Agent runs remotely on Agent Engine
- * - This route only proxies requests
- * - defaultAgent is REQUIRED for AG-UI discovery
- */
+// AG-UI agent name — MUST match backend app_name
+const AGENT_NAME = "locus";
 
 const runtime = new CopilotRuntime({
-  agents: {},
-
-  // 🔑 REQUIRED: must match ADK app_name
-  defaultAgent: "locus",
+  agents: {
+    [AGENT_NAME]: {
+      type: "ag-ui",
+    },
+  },
 });
 
 const serviceAdapter = new ExperimentalEmptyAdapter();
