@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Location Intelligence Report: Wagholi, Pune</title>
+    <style>
+        /* CSS Variables for Professional Consulting Palette */
+        :root {
+            --color-primary-dark: #1e3a8a; /* Navy blue */
+            --color-primary-light: #3b82f6; /* Brighter blue */
+            --color-success-dark: #059669; /* Dark green */
+            --color-success-light: #10b981; /* Brighter green */
+            --color-warning-dark: #d97706; /* Dark amber */
+            --color-warning-light: #f59e0b; /* Brighter amber */
+            --color-neutral-dark: #6b7280; /* Gray for text */
+            --color-neutral-medium: #a0a6b1; /* Lighter gray for subtle elements */
+            --color-neutral-light: #e5e7eb; /* Light gray for backgrounds */
+            --color-white: #ffffff;
+            --color-black: #000000;
+
+            /* Modern Sans-serif Fonts */
+            --font-family-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+
+            /* Spacing Scale */
+            --spacing-xs: 0.5rem;
+            --spacing-sm: 1rem;
+            --spacing-md: 1.5rem;
+            --spacing-lg: 2rem;
+            --spacing-xl: 3rem;
+            --spacing-xxl: 4rem;
+            --spacing-xxxl: 5rem;
+
+            /* Border Radius */
+            --border-radius-sm: 0.5rem;
+            --border-radius-md: 0.75rem;
+
+            /* Shadow Effects */
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Base Reset & Typography */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+            font-size: 16px; /* Base font size for rem units */
+        }
+
+        body {
+            font-family: var(--font-family-sans);
+            line-height: 1.6;
+            color: var(--color-neutral-dark);
+            background-color: var(--color-neutral-light);
+            -webkit-font-smoothing: antialiased; /* Smoother font rendering */
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            font-weight: 700;
+            color: var(--color-primary-dark);
+            margin-bottom: var(--spacing-md);
+        }
+
+        h1 { font-size: 3.5rem; line-height: 1.1; }
+        h2 { font-size: 2.5rem; line-height: 1.2; }
+        h3 { font-size: 2rem; line-height: 1.3; }
+        h4 { font-size: 1.5rem; line-height: 1.4; }
+        p { margin-bottom: var(--spacing-sm); }
+
+        /* Section Layout (Slides) */
+        .section {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: var(--spacing-xxl) var(--spacing-xl);
+            position: relative;
+            background-color: var(--color-white);
+            border-bottom: 1px solid var(--color-neutral-light); /* Subtle separator */
+        }
+
+        .section:nth-child(even) {
+            background-color: var(--color-neutral-light);
+        }
+
+        .section-content {
+            max-width: 1200px;
+            width: 100%;
+            margin: 0 auto;
+            text-align: center; /* Default text alignment for sections, specific elements can override */
+        }
+
+        .section-title {
+            text-align: center;
+            margin-bottom: var(--spacing-xl);
+            font-size: 3rem;
+            color: var(--color-primary-dark);
+        }
+        .section-subtitle {
+            font-size: 1.6rem;
+            color: var(--color-neutral-dark);
+            margin-top: -var(--spacing-md);
+            margin-bottom: var(--spacing-xxl);
+        }
+
+        /* Card Styles */
+        .card {
+            background-color: var(--color-white);
+            border-radius: var(--border-radius-md);
+            box-shadow: var(--shadow-md);
+            padding: var(--spacing-lg);
+            margin-bottom: var(--spacing-md);
+            text-align: left; /* Cards content is left-aligned */
+            position: relative;
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-lg);
+        }
+        .card.color-primary { border-top: 5px solid var(--color-primary-light); }
+        .card.color-success { border-top: 5px solid var(--color-success-light); }
+        .card.color-warning { border-top: 5px solid var(--color-warning-light); }
+        .card.no-border-top { border-top: none; }
+
+        /* Grid Layouts */
+        .grid {
+            display: grid;
+            gap: var(--spacing-lg);
+        }
+        .grid-2-cols { grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); }
+        .grid-3-cols { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+        .grid-4-cols { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+
+        /* Specific Component Styles */
+        .hero {
+            background: linear-gradient(135deg, var(--color-primary-dark) 0%, var(--color-primary-light) 100%);
+            color: var(--color-white);
+            padding: var(--spacing-xxl) var(--spacing-lg);
+            border-radius: var(--border-radius-md);
+            margin-bottom: var(--spacing-xl);
+            text-align: center;
+            box-shadow: var(--shadow-lg);
+        }
+        .hero h1 {
+            color: var(--color-white);
+            font-size: 5rem; /* Larger for impact */
+            margin-bottom: var(--spacing-xs);
+        }
+        .hero h2 {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 2.8rem;
+            margin-bottom: var(--spacing-md);
+        }
+        .hero p {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 1.35rem;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .stat-box {
+            background-color: var(--color-white);
+            border-radius: var(--border-radius-md);
+            box-shadow: var(--shadow-sm);
+            padding: var(--spacing-xl);
+            text-align: center;
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        }
+        .stat-box:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-md);
+        }
+        .stat-box .number {
+            font-size: 4rem;
+            font-weight: 700;
+            color: var(--color-primary-light);
+            line-height: 1;
+            margin-bottom: var(--spacing-xs);
+        }
+        .stat-box .label {
+            font-size: 1.2rem;
+            color: var(--color-neutral-dark);
+            font-weight: 600;
+        }
+        .stat-box.success .number { color: var(--color-success-dark); }
+        .stat-box.warning .number { color: var(--color-warning-dark); }
+
+        /* List Styles */
+        .list-unstyled {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .list-bullet-card li {
+            position: relative;
+            padding-left: var(--spacing-lg);
+            margin-bottom: var(--spacing-sm);
+            font-size: 1.05rem;
+        }
+        .list-bullet-card li::before {
+            content: '•';
+            position: absolute;
+            left: 0;
+            color: var(--color-primary-light);
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+        .numbered-list {
+            list-style-type: none;
+            counter-reset: my-counter;
+            padding: 0;
+            margin: 0;
+        }
+        .numbered-list li {
+            counter-increment: my-counter;
+            position: relative;
+            padding-left: var(--spacing-xl);
+            margin-bottom: var(--spacing-md);
+            font-size: 1.1rem;
+        }
+        .numbered-list li::before {
+            content: counter(my-counter) ".";
+            position: absolute;
+            left: 0;
+            font-weight: bold;
+            color: var(--color-primary-light);
+            font-size: 1.2em;
+            width: var(--spacing-lg); /* Ensure enough space for two-digit numbers */
+            text-align: right;
+        }
+
+        .market-validation-text {
+            font-size: 1.25rem;
+            max-width: 900px;
+            margin: var(--spacing-xl) auto var(--spacing-xxl) auto;
+            padding: var(--spacing-lg);
+            background-color: var(--color-neutral-light);
+            border-radius: var(--border-radius-md);
+            box-shadow: var(--shadow-sm);
+            text-align: left;
+            line-height: 1.8;
+            color: var(--color-neutral-dark);
+        }
+        .market-validation-text strong {
+            color: var(--color-primary-dark);
+        }
+
+        .location-score {
+            display: inline-flex;
+            align-items: center;
+            background-color: rgba(255, 255, 255, 0.15);
+            border-radius: var(--border-radius-md);
+            padding: var(--spacing-sm) var(--spacing-lg);
+            margin-top: var(--spacing-md);
+            font-size: 2rem;
+            font-weight: 600;
+        }
+        .location-score span {
+            margin-left: var(--spacing-sm);
+            color: var(--color-success-light);
+            font-weight: 700;
+        }
+
+        /* Responsive Adjustments */
+        @media (max-width: 768px) {
+            h1 { font-size: 2.5rem; }
+            h2 { font-size: 2rem; }
+            h3 { font-size: 1.5rem; }
+            .section-title { font-size: 2.25rem; }
+            .section-subtitle { font-size: 1.25rem; }
+            .hero h1 { font-size: 3.5rem; }
+            .hero h2 { font-size: 2rem; }
+            .hero p { font-size: 1.1rem; }
+            .location-score { font-size: 1.5rem; }
+            .stat-box .number { font-size: 3rem; }
+            .stat-box .label { font-size: 1rem; }
+            .grid-2-cols, .grid-3-cols, .grid-4-cols {
+                grid-template-columns: 1fr;
+            }
+            .section {
+                padding: var(--spacing-xl) var(--spacing-sm);
+            }
+            .market-validation-text {
+                font-size: 1.1rem;
+                padding: var(--spacing-sm);
+            }
+        }
+
+        /* Print Styles */
+        @media print {
+            .section {
+                min-height: auto; /* Allow content to dictate height for print */
+                page-break-after: always; /* Force each section onto a new page */
+                padding: 1.5cm; /* Standard print margins */
+                background-color: white !important; /* Ensure white background for print */
+                color: black !important; /* Ensure black text for print */
+                border-bottom: none; /* No border for printed pages */
+            }
+
+            body {
+                background-color: white;
+                color: black;
+            }
+
+            h1, h2, h3, h4, h5, h6, .section-title {
+                color: var(--color-primary-dark) !important; /* Keep brand colors for headings */
+            }
+
+            .hero {
+                background: var(--color-primary-dark) !important; /* Solid background for print */
+                -webkit-print-color-adjust: exact; /* Ensure background colors are printed */
+                print-color-adjust: exact;
+                box-shadow: none;
+                color: white !important;
+            }
+            .hero h1, .hero h2, .hero p, .location-score {
+                color: white !important;
+            }
+            .location-score span {
+                color: var(--color-success-light) !important;
+            }
+
+            .stat-box, .card, .market-validation-text {
+                box-shadow: none;
+                border: 1px solid var(--color-neutral-medium); /* Add subtle border for definition */
+                background-color: white !important;
+            }
+            .card.color-primary { border-top: 5px solid var(--color-primary-light) !important; }
+            .card.color-success { border-top: 5px solid var(--color-success-light) !important; }
+            .card.color-warning { border-top: 5px solid var(--color-warning-light) !important; }
+
+            .numbered-list li::before, .list-bullet-card li::before {
+                color: var(--color-primary-dark) !important;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- SLIDE 1 - EXECUTIVE SUMMARY & TOP RECOMMENDATION -->
+    <section class="section" id="executive-summary">
+        <div class="section-content">
+            <div class="hero">
+                <p style="font-size: 1.6rem; margin-bottom: var(--spacing-xs);">Strategic Location Intelligence Report</p>
+                <h1>Wagholi, Pune</h1>
+                <h2>Top Recommendation for New Gym Establishment</h2>
+                <div class="location-score">Overall Score: <span>50</span></div>
+            </div>
+
+            <p class="market-validation-text">
+                <strong>Market Validation:</strong> Strong market for a new gym, validated by rapid population growth from IT and industrial zones, a rising demographic of professionals with disposable income, and a national trend towards health and wellness. Existing competition confirms market demand.
+            </p>
+        </div>
+    </section>
+
+    <!-- SLIDE 2 - TOP RECOMMENDATION DETAILS -->
+    <section class="section" id="top-recommendation-details">
+        <div class="section-content">
+            <h2 class="section-title">Wagholi: Top Recommendation Deep Dive</h2>
+            <p class="section-subtitle">A "Residential Sticky" Opportunity</p>
+
+            <div class="grid grid-2-cols" style="margin-bottom: var(--spacing-xl);">
+                <div class="card color-success">
+                    <h3>Strengths & Evidence</h3>
+                    <ul class="list-unstyled list-bullet-card">
+                        <li><strong>Low Market Saturation:</strong> Significantly less competitive pressure (MSI of 0.54) with only 6 primary competitors.</li>
+                        <li><strong>Growing Residential Base:</strong> Rapid development of large residential projects provides an expanding, captive customer base.</li>
+                        <li><strong>Favorable Competitive Mix:</strong> No major national chains, making it easier for a new brand to establish a presence.</li>
+                        <li><strong>Validated Local Demand:</strong> Presence of highly-rated local gyms (e.g., Royal Fitness Gym, 4.7 stars) proves market viability.</li>
+                    </ul>
+                </div>
+                <div class="card color-warning">
+                    <h3>Concerns & Mitigation Strategies</h3>
+                    <ul class="list-unstyled list-bullet-card">
+                        <li><strong>Moderate Demand Signal:</strong> Underlying demand drivers are not as intense as in the core IT hub of Kharadi. <br>
+                            &mdash; <strong>Mitigation:</strong> Focus on a hyper-local, community-centric model with tailored offerings and strong resident engagement.</li>
+                        <li><strong>Rising Commercial Costs:</strong> Rapid development is increasing commercial property prices. <br>
+                            &mdash; <strong>Mitigation:</strong> Secure a long-term lease early in development phases to lock in favorable rental rates and ensure cost predictability.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="card color-primary no-border-top" style="max-width: 900px; margin: 0 auto;">
+                <h3>Opportunity Type & Target Customer Segment</h3>
+                <p><strong>Opportunity Type:</strong> Residential Sticky - High potential for customer loyalty and long-term engagement driven by a rapidly growing, stable residential community. This fosters repeat business and strong word-of-mouth.</p>
+                <p><strong>Target Customer Segments:</strong> Young professionals, families, and residents of new housing societies in Wagholi. This demographic is characterized by disposable income, a burgeoning interest in health & wellness, and a desire for convenient, quality local services.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- SLIDE 3 - COMPETITION ANALYSIS -->
+    <section class="section" id="competition-analysis">
+        <div class="section-content">
+            <h2 class="section-title">Competitive Landscape: Wagholi</h2>
+            <p class="section-subtitle">Key Metrics & Market Dynamics</p>
+
+            <div class="grid grid-3-cols">
+                <div class="stat-box">
+                    <div class="number">6</div>
+                    <div class="label">Total Competitors</div>
+                </div>
+                <div class="stat-box">
+                    <div class="number">0.5/km²</div>
+                    <div class="label">Competitor Density</div>
+                </div>
+                <div class="stat-box success">
+                    <div class="number">0.0%</div>
+                    <div class="label">Chain Dominance (National)</div>
+                </div>
+                <div class="stat-box success">
+                    <div class="number">4.8</div>
+                    <div class="label">Avg. Competitor Rating</div>
+                </div>
+                <div class="stat-box">
+                    <div class="number">0.54</div>
+                    <div class="label">Market Saturation Index (MSI)</div>
+                </div>
+                <div class="stat-box">
+                    <div class="number">2+</div>
+                    <div class="label">High Performers (Avg. 4.7+ Stars)</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SLIDE 4 - MARKET CHARACTERISTICS -->
+    <section class="section" id="market-characteristics">
+        <div class="section-content">
+            <h2 class="section-title">Market Characteristics: Wagholi</h2>
+            <p class="section-subtitle">Demographic, Economic & Environmental Factors</p>
+
+            <div class="grid grid-2-cols">
+                <div class="card">
+                    <h4>Population Density & Growth</h4>
+                    <p>Wagholi exhibits a <strong>High density</strong> population, driven by rapid influx from adjacent IT and industrial zones. This ensures a continually expanding and accessible customer base for new businesses.</p>
+                </div>
+                <div class="card">
+                    <h4>Income Level & Spending Power</h4>
+                    <p>The predominant demographic consists of professionals earning <strong>Medium-High income</strong>. This indicates strong disposable income, making them receptive to investing in premium health and wellness services.</p>
+                </div>
+                <div class="card">
+                    <h4>Infrastructure Development</h4>
+                    <p>The area boasts <strong>Excellent and improving infrastructure</strong>, including upgraded road networks, public amenities, and numerous new residential and commercial complexes. This enhances accessibility and supports business operations.</p>
+                </div>
+                <div class="card">
+                    <h4>Foot Traffic Patterns</h4>
+                    <p>Foot traffic is primarily concentrated among <strong>local residents</strong> within and around new high-density residential societies. This pattern supports a community-focused business model with high local visibility.</p>
+                </div>
+                <div class="card">
+                    <h4>Commercial Rental Costs</h4>
+                    <p>Due to intense development, commercial property prices and <strong>rental costs are rising</strong>. Strategic, early engagement for long-term lease agreements is critical to manage this increasing operational expense.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SLIDE 5 - ALTERNATIVE LOCATIONS -->
+    <section class="section" id="alternative-locations">
+        <div class="section-content">
+            <h2 class="section-title">Alternative Locations & Comparative Analysis</h2>
+            <p class="section-subtitle">Evaluating Other Potential Opportunities</p>
+
+            <div class="card color-warning" style="max-width: 900px; margin: 0 auto;">
+                <h3>Alternative: Kharadi (EON IT Park Vicinity)</h3>
+                <ul class="list-unstyled list-bullet-card">
+                    <li><strong>Overall Score:</strong> 50</li>
+                    <li><strong>Opportunity Type:</strong> Corporate/IT Hub Demand & Density</li>
+                    <li><strong>Key Strength:</strong> Extremely high demand signal (score of 8.8) from a dense concentration of high-income IT professionals. This offers a significant captive audience during working hours.</li>
+                    <li><strong>Key Concern:</strong> Highly saturated and competitive market (MSI of 0.97) with 14 established competitors, including several major national chains. Customer acquisition costs are likely very high.</li>
+                    <li><strong>Why Not Chosen:</strong> The intense market saturation presents a significantly higher risk for a new entrant. It would necessitate substantial capital investment for differentiation, aggressive marketing, and a highly unique value proposition to capture meaningful market share, ultimately outweighing the high demand signal for a new, independent gym business.</li>
+                </ul>
+            </div>
+            <p style="margin-top: var(--spacing-xxl); font-size: 1.2rem; max-width: 900px;">
+                While Kharadi presents a strong demand signal, our analysis indicates that Wagholi offers a more sustainable, lower-risk, and higher-growth-potential entry point for a new gym establishment, focusing on community integration and organic growth.
+            </p>
+        </div>
+    </section>
+
+    <!-- SLIDE 6 - KEY INSIGHTS & NEXT STEPS -->
+    <section class="section" id="insights-next-steps">
+        <div class="section-content">
+            <h2 class="section-title">Strategic Insights & Actionable Next Steps</h2>
+            <p class="section-subtitle">Driving Success in the Wagholi Market</p>
+
+            <div class="grid grid-2-cols" style="margin-bottom: var(--spacing-xl);">
+                <div class="card color-primary">
+                    <h3>Key Strategic Insights</h3>
+                    <ul class="list-unstyled list-bullet-card">
+                        <li>The Wagholi market is discerning and **quality-driven**; budget-focused offerings are unlikely to achieve long-term success. A premium approach is essential.</li>
+                        <li>**Differentiation is paramount** to stand out. Consider specialized niches such as high-intensity interval training (HIIT), dedicated wellness hubs, or comprehensive family fitness packages.</li>
+                        <li>The presence of a robust ecosystem of nutrition stores, supplement shops, and health clinics **validates a health-conscious customer base** eager for fitness solutions.</li>
+                        <li>Wagholi represents a **lower-risk, community-focused play**, prioritizing organic growth and loyalty, in contrast to Kharadi's high-risk, high-reward corporate-focused strategy.</li>
+                    </ul>
+                </div>
+                <div class="card color-success">
+                    <h3>Actionable Next Steps</h3>
+                    <ol class="numbered-list">
+                        <li><strong>Conduct On-Ground Site Selection:</strong> Prioritize locations near new, high-density residential towers in Wagholi, ensuring maximum visibility and easy accessibility for target demographics.</li>
+                        <li><strong>Develop Unique Brand & Offerings:</strong> Craft a distinct brand identity focused on community, incorporating specialized classes (e.g., yoga, functional training), and attractive family membership packages.</li>
+                        <li><strong>Initiate Pre-Launch Marketing:</strong> Engage directly with local property developers and Residents' Welfare Associations (RWAs) for exclusive pre-opening offers and community outreach programs.</li>
+                        <li><strong>Finalize Long-Term Financial Model:</strong> Secure a favorable, long-term lease agreement to mitigate rising commercial costs and ensure stability in the financial projections.</li>
+                        <li><strong>Forge Local Partnerships:</strong> Network with complementary local businesses (e.g., physiotherapists, healthy cafes, nutritionists) for cross-promotional activities and ecosystem building, enhancing value for members.</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SLIDE 7 - METHODOLOGY -->
+    <section class="section" id="methodology">
+        <div class="section-content">
+            <h2 class="section-title">Methodology & Data Sources</h2>
+            <p class="section-subtitle">Understanding Our Analytical Approach</p>
+
+            <div class="card color-primary" style="max-width: 900px; margin: 0 auto;">
+                <h3>Our Comprehensive Analytical Approach</h3>
+                <p>This location intelligence report is built upon a robust, multi-stage analytical framework designed to provide actionable insights. Our methodology integrates both qualitative market understanding and rigorous quantitative assessment:</p>
+                <ul class="list-unstyled list-bullet-card">
+                    <li><strong>Qualitative Market Research:</strong> Conducted in-depth analysis of demographic trends, socio-economic indicators, infrastructure development plans, and local sentiment across target areas. This included observing on-ground activity and speaking with local experts.</li>
+                    <li><strong>Real-time Competitor Mapping:</strong> Utilized advanced geospatial tools to identify all existing and upcoming competitors. Each competitor was profiled based on their service offerings, pricing structures, online ratings (e.g., Google Reviews), and perceived market positioning.</li>
+                    <li><strong>Quantitative Gap Analysis:</strong> Employed a proprietary model incorporating key performance indicators to assess market viability:
+                        <ul class="list-unstyled" style="padding-left: var(--spacing-lg);">
+                            <li><strong>Competition Intensity (CI):</strong> A weighted metric quantifying the density, size, and brand strength of competing establishments.</li>
+                            <li><strong>Demand Signal (DS):</strong> Evaluated based on population growth rates, average household income, lifestyle indices, and target demographic presence.</li>
+                            <li><strong>Market Saturation Index (MSI):</strong> A composite score derived from the interplay between demand signal and competition intensity, indicating the relative 'openness' of a market for a new entrant.</li>
+                        </ul>
+                    </li>
+                    <li><strong>Weighted Viability Scoring:</strong> Each potential location received an aggregated Viability Score, generated by weighting and combining CI, DS, and MSI with qualitative factors such as infrastructure quality, rental cost trends, and community growth potential. This scoring mechanism ensures a balanced and data-backed recommendation.</li>
+                </ul>
+                <p><strong>Data Sources:</strong> Our analysis draws from a diverse set of reliable sources including government census data, local municipal development plans, commercial real estate reports, consumer spending habit databases, and publicly available online business review platforms. All data was cross-referenced for accuracy and recency (Analysis Date: 2026-01-08).</p>
+            </div>
+        </div>
+    </section>
+
+</body>
+</html>

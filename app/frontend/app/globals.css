@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ======================================================
+   Global Base
+====================================================== */
+body {
+  @apply antialiased;
+  background: radial-gradient(
+      1200px 600px at 20% -10%,
+      #7c6e6e,
+      transparent
+    ),
+    radial-gradient(
+      1000px 500px at 90% 10%,
+      #e3efef,
+      transparent
+    ),
+    linear-gradient(to bottom, #f8fafc, #eef2f7);
+  color: #192131;
+}
+
+
+/* ======================================================
+   Glassmorphism (Intsemble Signature)
+====================================================== */
+.glass {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  border-radius: 20px;
+}
+
+/* ======================================================
+   Particle Background
+====================================================== */
+.particles::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image:
+    radial-gradient(2px 2px at 20% 30%, rgba(255,255,255,0.15), transparent),
+    radial-gradient(2px 2px at 80% 20%, rgba(255,255,255,0.12), transparent),
+    radial-gradient(1.5px 1.5px at 50% 70%, rgba(255,255,255,0.1), transparent);
+  animation: float 22s linear infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+@keyframes float {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-200px);
+  }
+}

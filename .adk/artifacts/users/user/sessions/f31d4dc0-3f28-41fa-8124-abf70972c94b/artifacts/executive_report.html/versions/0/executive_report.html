@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Location Intelligence Report - Coffee Shop, Guwahati</title>
+    <style>
+        /* CSS Variables for Colors */
+        :root {
+            --color-primary-dark: #1e3a8a; /* Navy blue */
+            --color-primary-light: #3b82f6; /* Lighter blue */
+            --color-success-dark: #059669; /* Dark green */
+            --color-success-light: #10b981; /* Lighter green */
+            --color-warning-dark: #d97706; /* Dark amber */
+            --color-warning-light: #f59e0b; /* Lighter amber */
+            --color-neutral-dark: #6b7280; /* Dark gray */
+            --color-neutral-light: #e5e7eb; /* Light gray */
+            --color-text-dark: #1f2937; /* Very dark gray for general text */
+            --color-text-light: #f9fafb; /* Off-white for text on dark backgrounds */
+            --color-white: #ffffff;
+        }
+
+        /* Base Styles */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+            line-height: 1.6;
+            color: var(--color-text-dark);
+            scroll-behavior: smooth;
+        }
+
+        body {
+            background-color: var(--color-neutral-light);
+        }
+
+        /* Typography */
+        h1, h2, h3, h4, h5, h6 {
+            font-weight: 700;
+            margin-bottom: 0.8em;
+            color: var(--color-primary-dark);
+        }
+
+        h1 { font-size: 3.5em; line-height: 1.1; }
+        h2 { font-size: 2.5em; line-height: 1.2; }
+        h3 { font-size: 1.8em; line-height: 1.3; }
+        h4 { font-size: 1.4em; line-height: 1.4; }
+        p { margin-bottom: 1em; }
+        ul, ol { margin-bottom: 1em; padding-left: 1.5em; }
+        li { margin-bottom: 0.5em; }
+
+        /* General Slide Layout */
+        .slide {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 4rem 2rem;
+            text-align: center;
+            position: relative; /* For print-friendly page-break-after */
+        }
+
+        /* Print-friendly styles */
+        @media print {
+            .slide {
+                min-height: auto; /* Allow content to dictate height */
+                page-break-after: always;
+                page-break-inside: avoid; /* Avoid breaking content across pages */
+                display: block; /* Simpler display for print */
+                padding: 1.5cm; /* Standard print margins */
+            }
+            body {
+                background-color: var(--color-white);
+            }
+            .slide:last-of-type {
+                page-break-after: auto; /* No page break after the last slide */
+            }
+            h1, h2, h3, h4, h5, h6, p, ul, ol, li {
+                color: var(--color-text-dark) !important; /* Ensure dark text for print */
+            }
+            .hero-section h1, .hero-section h2, .hero-section p, #slide1 h1, #slide1 h2, #slide1 .recommended-location, #slide1 .market-validation {
+                 color: var(--color-text-dark) !important; /* Keep hero text white */
+            }
+            #slide1 {
+                background: var(--color-white) !important; /* White background for print */
+            }
+            .recommended-score-box {
+                background-color: var(--color-white) !important;
+                border: 1px solid var(--color-primary-dark);
+                box-shadow: none !important;
+            }
+            .recommended-score-box .score-label, .recommended-score-box .score-value {
+                color: var(--color-text-dark) !important;
+            }
+            .card, .stat-box {
+                 box-shadow: none !important;
+                 border: 1px solid var(--color-neutral-dark); /* Add border for definition */
+            }
+            .strength-card { background-color: #e6ffe6 !important; border-color: var(--color-success-dark) !important; color: var(--color-text-dark) !important;}
+            .strength-card h4, .strength-card p { color: var(--color-text-dark) !important; }
+
+            .concern-card { background-color: #fffbe6 !important; border-color: var(--color-warning-dark) !important; color: var(--color-text-dark) !important;}
+            .concern-card h4, .concern-card p { color: var(--color-text-dark) !important; }
+
+            .insights-list li, .next-steps-list li {
+                background-color: var(--color-white) !important;
+                border: 1px solid var(--color-neutral-dark) !important;
+                box-shadow: none !important;
+            }
+            .insights-list li::before, .next-steps-list li::before {
+                 color: var(--color-text-dark) !important;
+                 background-color: var(--color-neutral-light) !important;
+            }
+        }
+
+
+        /* Container for content within slides */
+        .slide-content {
+            max-width: 1200px;
+            width: 100%;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2rem;
+        }
+
+        /* Cards & Boxes */
+        .card {
+            background-color: var(--color-white);
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            text-align: left;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            width: 100%;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+        }
+
+        .grid-3-cols {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            width: 100%;
+        }
+
+        .grid-2-cols {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 1.5rem;
+            width: 100%;
+        }
+
+        .stat-box {
+            background-color: var(--color-white);
+            padding: 2rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .stat-box .number {
+            font-size: 3.5em;
+            font-weight: 700;
+            color: var(--color-primary-light);
+            line-height: 1;
+        }
+
+        .stat-box .label {
+            font-size: 1.1em;
+            font-weight: 500;
+            color: var(--color-neutral-dark);
+            text-align: center;
+        }
+
+        /* Specific Card Styles */
+        .strength-card {
+            background-color: var(--color-success-light);
+            color: var(--color-text-light);
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            text-align: left;
+        }
+        .strength-card h4 {
+            color: var(--color-white);
+            margin-bottom: 0.5em;
+        }
+        .strength-card p {
+            color: var(--color-text-light);
+            opacity: 0.9;
+        }
+
+        .concern-card {
+            background-color: var(--color-warning-light);
+            color: var(--color-text-light);
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            text-align: left;
+        }
+        .concern-card h4 {
+            color: var(--color-white);
+            margin-bottom: 0.5em;
+        }
+        .concern-card p {
+            color: var(--color-text-light);
+            opacity: 0.9;
+        }
+
+        .alternative-card {
+            background-color: var(--color-white);
+            border: 1px solid var(--color-neutral-light);
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            text-align: left;
+        }
+        .alternative-card h4 {
+            color: var(--color-primary-dark);
+            margin-bottom: 0.5em;
+        }
+        .alternative-card .score {
+            font-size: 1.8em;
+            font-weight: 600;
+            color: var(--color-primary-light);
+            margin-top: 0.5em;
+        }
+        .alternative-card strong {
+            color: var(--color-primary-dark);
+        }
+        .alternative-card .strength-text { color: var(--color-success-dark); }
+        .alternative-card .concern-text { color: var(--color-warning-dark); }
+
+
+        /* Slide 1 - Hero Section */
+        #slide1 {
+            background: linear-gradient(135deg, var(--color-primary-dark) 0%, #0c4a6e 100%);
+            color: var(--color-text-light);
+            text-align: center;
+            justify-content: center;
+        }
+
+        #slide1 .slide-content {
+            max-width: 900px;
+            gap: 1.5rem;
+        }
+
+        #slide1 h1 {
+            color: var(--color-text-light);
+            font-size: 4.5em; /* Even larger for hero */
+            margin-bottom: 0.2em;
+        }
+
+        #slide1 h2 {
+            color: var(--color-text-light);
+            font-size: 2.8em;
+            font-weight: 500;
+            margin-bottom: 0.5em;
+        }
+
+        .recommended-location {
+            font-size: 1.5em;
+            font-weight: 600;
+            color: var(--color-text-light);
+            margin-bottom: 1em;
+        }
+
+        .recommended-score-box {
+            background-color: rgba(255, 255, 255, 0.15);
+            border-radius: 1rem;
+            padding: 1.5rem 2.5rem;
+            display: inline-block;
+            margin-top: 1.5rem;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+        }
+        .recommended-score-box .score-label {
+            font-size: 1.1em;
+            font-weight: 300;
+            margin-bottom: 0.2em;
+            color: var(--color-text-light);
+        }
+        .recommended-score-box .score-value {
+            font-size: 4em;
+            font-weight: 700;
+            color: var(--color-success-light);
+            line-height: 1;
+        }
+
+        #slide1 .market-validation {
+            font-size: 1.15em;
+            color: var(--color-text-light);
+            max-width: 800px;
+            margin: 2rem auto 0 auto;
+            opacity: 0.9;
+        }
+
+        /* Slide 2 Specifics */
+        #slide2 .type-segment-info {
+            background-color: var(--color-white);
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            margin-bottom: 2rem;
+            text-align: center;
+            width: 100%;
+        }
+        #slide2 .type-segment-info p strong {
+            color: var(--color-primary-dark);
+        }
+
+        /* Slide 3 Specifics */
+        #slide3 .competition-stats {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 1.5rem;
+            width: 100%;
+            margin-bottom: 3rem;
+        }
+
+        /* Slide 4 Specifics */
+        #slide4 .market-char-item {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+        #slide4 .market-char-item h4 {
+            color: var(--color-primary-dark);
+            margin-bottom: 0;
+            font-size: 1.2em;
+        }
+        #slide4 .market-char-item p {
+            margin-bottom: 0;
+            color: var(--color-text-dark);
+        }
+
+        /* Slide 5 Specifics */
+        #slide5 .alternative-cards-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            width: 100%;
+        }
+
+        /* Slide 6 Specifics */
+        #slide6 .insights-list ul, #slide6 .next-steps-list ol {
+            list-style-type: none;
+            padding-left: 0;
+            width: 100%;
+            text-align: left;
+        }
+        #slide6 .insights-list li {
+            background-color: var(--color-white);
+            padding: 1rem 1.5rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+            margin-bottom: 1rem;
+            border-left: 5px solid var(--color-primary-light);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        #slide6 .insights-list li::before {
+            content: "💡"; /* Unicode for lightbulb */
+            font-size: 1.2em;
+            flex-shrink: 0;
+        }
+
+        #slide6 .next-steps-list li {
+            background-color: var(--color-white);
+            padding: 1rem 1.5rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+            margin-bottom: 1rem;
+            border-left: 5px solid var(--color-success-dark);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            counter-increment: step-counter;
+        }
+        #slide6 .next-steps-list li::before {
+            content: counter(step-counter);
+            font-weight: bold;
+            color: var(--color-primary-dark);
+            font-size: 1.2em;
+            background-color: var(--color-neutral-light);
+            border-radius: 50%;
+            width: 2em;
+            height: 2em;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        /* Slide 7 Specifics */
+        #slide7 .methodology-content {
+            text-align: left;
+            padding: 1.5rem;
+            background-color: var(--color-white);
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            width: 100%;
+        }
+        #slide7 .methodology-content h3 {
+            color: var(--color-primary-dark);
+        }
+        #slide7 .methodology-content ul {
+            list-style-type: disc;
+            padding-left: 1.2em;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            h1 { font-size: 2.8em; }
+            h2 { font-size: 2em; }
+            h3 { font-size: 1.5em; }
+            h4 { font-size: 1.2em; }
+            .slide { padding: 3rem 1rem; }
+            .recommended-score-box .score-value { font-size: 3em; }
+            .stat-box .number { font-size: 2.5em; }
+            .grid-3-cols, .grid-2-cols {
+                grid-template-columns: 1fr; /* Stack columns on small screens */
+            }
+            .alternative-cards-container {
+                grid-template-columns: 1fr;
+            }
+            .slide-content {
+                gap: 1.5rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            h1 { font-size: 2em; }
+            h2 { font-size: 1.5em; }
+            .recommended-score-box { padding: 1rem 1.5rem; }
+            .recommended-score-box .score-value { font-size: 2.5em; }
+            .recommended-location { font-size: 1.2em; }
+            .stat-box .number { font-size: 2em; }
+            .card, .strength-card, .concern-card, .alternative-card, .stat-box {
+                padding: 1rem;
+                border-radius: 0.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- SLIDE 1 - EXECUTIVE SUMMARY & TOP RECOMMENDATION -->
+    <section id="slide1" class="slide">
+        <div class="slide-content">
+            <h1>Location Intelligence Report</h1>
+            <h2>Coffee Shop in Guwahati</h2>
+            <p class="recommended-location">Target Business: Coffee Shop</p>
+            <p class="recommended-location">Recommended Location: <span style="color: var(--color-success-light);">Ambari / Digholi Pukhuri East</span></p>
+
+            <div class="recommended-score-box">
+                <p class="score-label">Overall Viability Score</p>
+                <p class="score-value">84</p>
+            </div>
+
+            <p class="market-validation">
+                The Guwahati market shows strong validation for a new coffee shop, evidenced by a city-wide 'cafe boom' and a vibrant ecosystem of popular local cafes. While the originally targeted Noonmati area shows moderate, developing potential, several nearby zones exhibit exceptionally high, proven demand, confirming a significant market opportunity with the correct location strategy.
+            </p>
+        </div>
+    </section>
+
+    <!-- SLIDE 2 - TOP RECOMMENDATION DETAILS -->
+    <section id="slide2" class="slide">
+        <div class="slide-content">
+            <h2>Top Recommendation Details: Ambari / Digholi Pukhuri East</h2>
+            <div class="type-segment-info card">
+                <p><strong>Opportunity Type:</strong> High-Traffic Magnet</p>
+                <p><strong>Target Customer Segment:</strong> Affluent young professionals, students, and tourists seeking a premium 'third place' experience.</p>
+            </div>
+
+            <h3>Strengths</h3>
+            <div class="grid-3-cols">
+                <div class="strength-card">
+                    <h4>Proven High Demand</h4>
+                    <p>This zone demonstrates the highest level of existing customer activity and spending on cafes in the entire analysis. (Evidence: Highest Demand Signal of 8.6; '11th Avenue Cafe Bistro' has over 5,500 reviews).</p>
+                </div>
+                <div class="strength-card">
+                    <h4>Low Market Saturation</h4>
+                    <p>Despite popular cafes, the competitive footprint is extremely small relative to the enormous proven demand. (Evidence: Lowest Market Saturation Index of 0.16).</p>
+                </div>
+                <div class="strength-card">
+                    <h4>Premium Customer Base</h4>
+                    <p>The area's demographics and infrastructure attract a customer base willing to pay for premium experiences. (Evidence: High scores for population density (9/10), income (8/10), and infrastructure (9/10)).</p>
+                </div>
+            </div>
+
+            <h3 style="margin-top: 2rem;">Concerns & Mitigations</h3>
+            <div class="grid-3-cols">
+                <div class="concern-card">
+                    <h4>Risk: Intense Direct Competition</h4>
+                    <p>The zone contains highly-reviewed independent cafes.<br><strong>Mitigation:</strong> Differentiate with a unique, niche concept (e.g., specialty roastery, co-working focus).</p>
+                </div>
+                <div class="concern-card">
+                    <h4>Risk: High Operating Costs</h4>
+                    <p>Prime location means high rental costs.<br><strong>Mitigation:</strong> Develop a business model supporting premium pricing and focus on maximizing revenue per square foot.</p>
+                </div>
+                <div class="concern-card">
+                    <h4>Risk: Brand Recognition Battle</h4>
+                    <p>Incumbents have significant brand loyalty.<br><strong>Mitigation:</strong> Implement an aggressive pre-launch marketing campaign using social media and local influencers.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SLIDE 3 - COMPETITION ANALYSIS -->
+    <section id="slide3" class="slide">
+        <div class="slide-content">
+            <h2>Competition Analysis: Ambari / Digholi Pukhuri East</h2>
+            <div class="competition-stats">
+                <div class="stat-box">
+                    <span class="number">3</span>
+                    <span class="label">Total Competitors (in zone)</span>
+                </div>
+                <div class="stat-box">
+                    <span class="number">33.3<small>%</small></span>
+                    <span class="label">Chain Dominance</span>
+                </div>
+                <div class="stat-box">
+                    <span class="number">4.2</span>
+                    <span class="label">Average Competitor Rating</span>
+                </div>
+            </div>
+            <p style="max-width: 800px; color: var(--color-neutral-dark);">Despite popular cafes, the competitive footprint is extremely small relative to the enormous proven demand. (Evidence: Lowest Market Saturation Index of 0.16). The average competitor rating is high, indicating quality establishments. This signals a market that appreciates good coffee and service, but also a challenge to stand out.</p>
+        </div>
+    </section>
+
+    <!-- SLIDE 4 - MARKET CHARACTERISTICS -->
+    <section id="slide4" class="slide">
+        <div class="slide-content">
+            <h2>Market Characteristics: Ambari / Digholi Pukhuri East</h2>
+            <div class="grid-2-cols">
+                <div class="card market-char-item">
+                    <h4>Population Density</h4>
+                    <p>High</p>
+                </div>
+                <div class="card market-char-item">
+                    <h4>Income Level</h4>
+                    <p>High</p>
+                </div>
+                <div class="card market-char-item">
+                    <h4>Infrastructure Access</h4>
+                    <p>Excellent</p>
+                </div>
+                <div class="card market-char-item">
+                    <h4>Foot Traffic Pattern</h4>
+                    <p>Sustained high traffic (residents, professionals, students, tourists)</p>
+                </div>
+                <div class="card market-char-item">
+                    <h4>Rental Cost Tier</h4>
+                    <p>High</p>
+                </div>
+                <div class="card market-char-item">
+                    <h4>Best Customer Segment</h4>
+                    <p>Affluent young professionals, students, and tourists seeking a premium 'third place' experience.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SLIDE 5 - ALTERNATIVE LOCATIONS -->
+    <section id="slide5" class="slide">
+        <div class="slide-content">
+            <h2>Alternative Locations Considered</h2>
+            <div class="alternative-cards-container">
+                <div class="alternative-card">
+                    <h4>1. Ulubari / South Sarania</h4>
+                    <p class="score">Score: 76</p>
+                    <p><strong>Opportunity Type:</strong> Balanced Growth Zone</p>
+                    <p><span class="strength-text"><strong>Strength:</strong></span> Strong demand with no major chain competitors.</p>
+                    <p><span class="concern-text"><strong>Concern:</strong></span> Faces strong competition from a popular bakery-cafe hybrid ('Patisserie Operaa').</p>
+                    <p><strong>Why Not Top:</strong> Demand signal and total market activity are lower than in Ambari.</p>
+                </div>
+
+                <div class="alternative-card">
+                    <h4>2. Christian Basti / GS Road</h4>
+                    <p class="score">Score: 75</p>
+                    <p><strong>Opportunity Type:</strong> Commercial Hub Intercept</p>
+                    <p><span class="strength-text"><strong>Strength:</strong></span> Absolute highest demand signal (9.0) and foot traffic.</p>
+                    <p><span class="concern-text"><strong>Concern:</strong></span> Extremely high chain dominance (67%) with strong global brands (Starbucks).</p>
+                    <p><strong>Why Not Top:</strong> Head-to-head competition with globally recognized chains is expensive and challenging.</p>
+                </div>
+
+                <div class="alternative-card">
+                    <h4>3. Noonmati</h4>
+                    <p class="score">Score: 64</p>
+                    <p><strong>Opportunity Type:</strong> Residential First-Mover</p>
+                    <p><span class="strength-text"><strong>Strength:</strong></span> True 'blue ocean' opportunity with no direct competitors.</p>
+                    <p><span class="concern-text"><strong>Concern:</strong></span> Demand is unproven, making it a higher-risk, market-creation play.</p>
+                    <p><strong>Why Not Top:</strong> Lower quantitative score due to developing infrastructure and lack of demonstrated foot traffic for this business type.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SLIDE 6 - KEY INSIGHTS & NEXT STEPS -->
+    <section id="slide6" class="slide">
+        <div class="slide-content">
+            <h2>Key Insights & Next Steps</h2>
+
+            <div style="width: 100%; text-align: left;">
+                <h3>Strategic Insights</h3>
+                <div class="insights-list">
+                    <ul>
+                        <li>Guwahati's cafe market heavily favors strong local brands.</li>
+                        <li>The best opportunities are in high-demand zones with low market saturation, not empty markets.</li>
+                        <li>Noonmati is a high-risk 'market creation' play; Ambari is a lower-risk 'market capture' play.</li>
+                        <li>A premium positioning is critical to stand out in the saturated mid-tier market.</li>
+                        <li>Successful local bakeries (like 'Sugar plum bakery' in Noonmati) are a positive indicator of consumer taste.</li>
+                        <li>A strong digital presence is non-negotiable for driving foot traffic.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div style="width: 100%; text-align: left; margin-top: 2rem;">
+                <h3>Actionable Next Steps</h3>
+                <div class="next-steps-list">
+                    <ol>
+                        <li>Conduct on-the-ground site scouting in Ambari near high-traffic spots.</li>
+                        <li>Develop a unique, premium brand identity and interior design.</li>
+                        <li>Create a financial model with premium pricing and high-cost assumptions.</li>
+                        <li>Begin building a social media presence 3-4 months pre-launch.</li>
+                        <li>Finalize a menu focused on specialty coffee and high-margin food items.</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SLIDE 7 - METHODOLOGY -->
+    <section id="slide7" class="slide">
+        <div class="slide-content">
+            <h2>Methodology</h2>
+            <div class="methodology-content">
+                <p>This recommendation is based on a multi-stage analysis integrating demographic research, competitive landscape mapping, and a quantitative gap analysis scoring six zones on a Viability Index composed of Demand Signal, Competition Intensity, Market Saturation, and Chain Dominance.</p>
+                <h3 style="margin-top: 1.5rem;">Data Sources & Approach:</h3>
+                <ul>
+                    <li><strong>Demographic Research:</strong> Analyzed population density, income levels, and age distribution using publicly available census data and local economic reports.</li>
+                    <li><strong>Competitive Landscape Mapping:</strong> Identified existing coffee shops and cafes within defined zones, noting their type (chain/independent), online ratings, and review counts from popular platforms.</li>
+                    <li><strong>Foot Traffic Analysis:</strong> Estimated foot traffic patterns based on proximity to key landmarks (educational institutions, commercial hubs, tourist spots) and public transportation nodes.</li>
+                    <li><strong>Rental Cost Estimation:</strong> Tiered rental costs based on property listings and local real estate market data.</li>
+                    <li><strong>Viability Index:</strong> A proprietary scoring model weighting factors such as:
+                        <ul>
+                            <li><strong>Demand Signal:</strong> High customer reviews/counts for existing businesses.</li>
+                            <li><strong>Competition Intensity:</strong> Number and proximity of direct competitors.</li>
+                            <li><strong>Market Saturation:</strong> Ratio of competitors to estimated demand/population.</li>
+                            <li><strong>Chain Dominance:</strong> Presence and strength of major coffee chains.</li>
+                        </ul>
+                    </li>
+                    <li><strong>Qualitative Assessment:</strong> Integrated local market knowledge and observed trends (e.g., "cafe boom") to contextualize quantitative scores.</li>
+                </ul>
+            </div>
+            <p style="margin-top: 2rem; color: var(--color-neutral-dark);">Analysis Date: 2026-01-08</p>
+        </div>
+    </section>
+
+</body>
+</html>

@@ -1,0 +1,62 @@
+# ===============================
+# Python
+# ===============================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+requirements.txt
+
+
+# ===============================
+# ADK / Agent Engine
+# ===============================
+.logs/
+logs/
+.requirements.txt
+
+# ===============================
+# Node / Next.js
+# ===============================
+node_modules/
+.next/
+out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ===============================
+# Frontend local env
+# ===============================
+app/frontend/.env.local
+app/frontend/.env.local.*
+app/frontend/.next/
+app/frontend/node_modules/
+
+# ===============================
+# OS / Editor
+# ===============================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# ===============================
+# Secrets (never commit)
+# ===============================
+*.key
+*.pem
+*.json
+!package.json
+!tsconfig.json
+!tailwind.config.js
+!next.config.js
