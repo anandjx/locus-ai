@@ -24,7 +24,8 @@ export default function RootLayout({
   return (
     <html lang="en" className={inter.variable}>
       <body>
-        <CopilotKit runtimeUrl="/api/copilotkit" agent="locus">
+        {/* <CopilotKit runtimeUrl="/api/copilotkit" agent="locus"> */}
+        <CopilotKit runtimeUrl="/api/copilotkit">
           {children}
         </CopilotKit>
       </body>
