@@ -63,119 +63,155 @@ async function getGoogleAccessToken() {
 }
 
 /**
- * Custom LangGraph Service Adapter for Vertex AI
- * This implements the protocol CopilotKit expects when agent="locus" is set
+ * Custom Remote Agent Implementation
+ * This bypasses the service adapter and implements the agent directly
  */
-class VertexAILangGraphAdapter {
-  async process(request: {
+class VertexAIRemoteAgent {
+  name = AGENT_NAME;
+  
+  async run(params: {
     messages: any[];
     threadId?: string;
     state?: any;
-  }): Promise<any> {
-    console.log("🚀 [VertexAI Adapter] Processing request");
-    console.log("📊 [VertexAI Adapter] Messages:", request.messages?.length || 0);
-    console.log("📊 [VertexAI Adapter] ThreadId:", request.threadId);
+  }): Promise<AsyncGenerator<any, void, unknown>> {
+    console.log("🚀 [VertexAI Agent] run() called");
+    console.log("📊 [VertexAI Agent] Messages:", params.messages?.length || 0);
+    console.log("📊 [VertexAI Agent] ThreadId:", params.threadId);
+    
+    const self = this;
+    
+    return (async function* () {
+      try {
+        const token = await getGoogleAccessToken();
+        console.log("🔑 [VertexAI Agent] OAuth token obtained");
 
-    try {
-      const token = await getGoogleAccessToken();
-      console.log("🔑 [VertexAI Adapter] OAuth token obtained");
+        // Transform messages
+        const transformedMessages = (params.messages || []).map((msg: any) => ({
+          role: msg.role === "assistant" ? "model" : msg.role,
+          content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
+        }));
 
-      // Transform messages to Vertex AI format
-      const transformedMessages = (request.messages || []).map((msg: any) => ({
-        role: msg.role === "assistant" ? "model" : msg.role,
-        content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
-      }));
+        const vertexPayload = {
+          input: {
+            messages: transformedMessages,
+            state: params.state || {},
+            thread_id: params.threadId || `thread_${Date.now()}`,
+          },
+        };
 
-      const vertexPayload = {
-        input: {
-          messages: transformedMessages,
-          state: request.state || {},
-          thread_id: request.threadId || `thread_${Date.now()}`,
-        },
-      };
+        console.log("📤 [VertexAI Agent] Calling:", FINAL_ENDPOINT);
+        console.log("📤 [VertexAI Agent] Payload:", JSON.stringify(vertexPayload).substring(0, 400));
 
-      console.log("📤 [VertexAI Adapter] Calling:", FINAL_ENDPOINT);
-      console.log("📤 [VertexAI Adapter] Payload preview:", JSON.stringify(vertexPayload).substring(0, 300));
+        const response = await fetch(FINAL_ENDPOINT, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(vertexPayload),
+        });
 
-      const response = await fetch(FINAL_ENDPOINT, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(vertexPayload),
-      });
+        console.log(`📥 [VertexAI Agent] Response status: ${response.status}`);
 
-      console.log(`📥 [VertexAI Adapter] Response status: ${response.status}`);
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("❌ [VertexAI Agent] Error:", errorText.substring(0, 500));
+          
+          yield {
+            role: "assistant",
+            content: `Error ${response.status}: ${errorText.substring(0, 200)}`,
+          };
+          return;
+        }
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("❌ [VertexAI Adapter] Error:", errorText.substring(0, 500));
-        throw new Error(`Vertex AI returned ${response.status}: ${errorText.substring(0, 200)}`);
+        const result = await response.json();
+        console.log("✅ [VertexAI Agent] Success!");
+        console.log("✅ [VertexAI Agent] Response keys:", Object.keys(result));
+        console.log("✅ [VertexAI Agent] Full response:", JSON.stringify(result, null, 2));
+
+        // Extract the actual response content
+        let content = "";
+        let state = {};
+
+        // Try different response structures Vertex AI might return
+        if (result.output) {
+          content = typeof result.output === "string" ? result.output : JSON.stringify(result.output);
+          state = result.state || {};
+        } else if (result.content) {
+          content = result.content;
+          state = result.state || {};
+        } else if (result.messages && Array.isArray(result.messages)) {
+          const lastMessage = result.messages[result.messages.length - 1];
+          content = lastMessage?.content || JSON.stringify(result);
+          state = result.state || {};
+        } else if (result.response) {
+          content = result.response;
+          state = result.state || {};
+        } else {
+          content = JSON.stringify(result);
+        }
+
+        console.log("📝 [VertexAI Agent] Extracted content length:", content.length);
+        console.log("📝 [VertexAI Agent] Extracted state keys:", Object.keys(state));
+
+        // Yield the message
+        yield {
+          role: "assistant",
+          content: content,
+        };
+
+        // Yield state update if present
+        if (Object.keys(state).length > 0) {
+          yield {
+            state: state,
+          };
+        }
+
+      } catch (error: any) {
+        console.error("❌ [VertexAI Agent] Exception:", error.message);
+        console.error("❌ [VertexAI Agent] Stack:", error.stack);
+        
+        yield {
+          role: "assistant",
+          content: `System error: ${error.message}`,
+        };
       }
-
-      const result = await response.json();
-      console.log("✅ [VertexAI Adapter] Success! Keys:", Object.keys(result));
-      console.log("✅ [VertexAI Adapter] Result preview:", JSON.stringify(result).substring(0, 500));
-
-      // Return in the format CopilotKit expects
-      return {
-        messages: [
-          {
-            role: "assistant",
-            content: result.content || result.output || result.response || JSON.stringify(result),
-          }
-        ],
-        state: result.state || {},
-      };
-
-    } catch (error: any) {
-      console.error("❌ [VertexAI Adapter] Exception:", error.message);
-      console.error("❌ [VertexAI Adapter] Stack:", error.stack?.substring(0, 500));
-      
-      // Return error as assistant message so UI shows it
-      return {
-        messages: [
-          {
-            role: "assistant",
-            content: `I encountered an error: ${error.message}`,
-          }
-        ],
-        state: {},
-      };
-    }
+    })();
   }
 }
 
 export const POST = async (req: NextRequest) => {
   console.log("=".repeat(80));
-  console.log("📥 [POST] CopilotKit request received");
+  console.log("📥 [POST] CopilotKit request received at", new Date().toISOString());
   console.log("=".repeat(80));
 
   try {
-    const serviceAdapter = new VertexAILangGraphAdapter();
-
     const runtime = new CopilotRuntime({
-      // Don't register agents here - the adapter handles it
+      remoteActions: [
+        {
+          name: AGENT_NAME,
+          agent: new VertexAIRemoteAgent() as any,
+        }
+      ],
     });
 
     const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
       runtime,
-      serviceAdapter: serviceAdapter as any,
       endpoint: "/api/copilotkit",
     });
 
     const response = await handleRequest(req);
-    console.log("✅ [POST] Request handled successfully");
+    console.log("✅ [POST] Request handled, returning response");
     return response;
 
   } catch (error: any) {
     console.error("❌ [POST] Fatal error:", error.message);
     console.error("❌ [POST] Stack:", error.stack);
+    
     return new Response(
       JSON.stringify({ 
         error: error.message,
-        hint: "Check Vercel logs for details"
+        stack: error.stack?.substring(0, 500),
       }),
       { 
         status: 500, 
