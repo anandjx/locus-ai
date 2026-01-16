@@ -47,13 +47,12 @@ import {
 import { NextRequest } from "next/server";
 import { GoogleAuth } from "google-auth-library";
 
+// 1. Setup Constants
 const AGENT_NAME = "locus";
 const BASE_ENDPOINT = (process.env.AGENT_ENGINE_ENDPOINT || "").replace(":query", "");
 const FINAL_ENDPOINT = `${BASE_ENDPOINT}:query`;
 
-/**
- * Robust Google OAuth2 Token Generation
- */
+// 2. Google OAuth2 Token Helper
 async function getGoogleAccessToken() {
   const base64Key = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64;
   if (!base64Key) throw new Error("Missing GOOGLE_SERVICE_ACCOUNT_KEY_BASE64");
@@ -71,14 +70,15 @@ async function getGoogleAccessToken() {
 }
 
 /**
- * Custom Vertex AI Agent Implementation
- * Fixed: Added .clone() to satisfy CopilotKit v1.50.1 internal thread management.
+ * 3. Custom Vertex AI Agent Implementation
+ * Fixed: Added .clone() to satisfy the internal CopilotKit thread safety requirements.
  */
 const vertexAgent: any = {
   name: AGENT_NAME,
   description: "Locus Retail Strategy Agent",
 
-  // CRITICAL FIX: The runtime calls this to isolate session state
+  // CRITICAL FIX: The runtime calls this to isolate session state for each request.
+  // Without this, you get the "i[r].clone is not a function" error.
   clone: function() {
     return { ...this }; 
   },
@@ -86,7 +86,7 @@ const vertexAgent: any = {
   execute: async (params: any): Promise<any> => {
     const token = await getGoogleAccessToken();
 
-    // The 'input' wrapper ensures compatibility with Vertex AI Reasoning Engine
+    // The 'input' wrapper is MANDATORY for Vertex AI Reasoning Engine
     const vertexPayload = {
       input: {
         messages: params.messages,
@@ -113,9 +113,9 @@ const vertexAgent: any = {
   },
 };
 
+// 4. Main Route Handler
 export const POST = async (req: NextRequest) => {
   const runtime = new CopilotRuntime({
-    // Record-based mapping for v1.50.1
     agents: {
       [AGENT_NAME]: vertexAgent,
     },
