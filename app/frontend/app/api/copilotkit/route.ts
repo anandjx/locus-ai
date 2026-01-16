@@ -40,17 +40,13 @@
 
 import {
   CopilotRuntime,
-  ExperimentalEmptyAdapter,
   copilotRuntimeNextJSAppRouterEndpoint,
 } from "@copilotkit/runtime";
-import { AbstractAgent, RunAgentInput, EventType, BaseEvent } from "@ag-ui/client";
-import { Observable } from "rxjs";
 import { NextRequest } from "next/server";
 import { GoogleAuth } from "google-auth-library";
 
 const AGENT_NAME = "locus";
-const BASE_ENDPOINT = (process.env.AGENT_ENGINE_ENDPOINT || "").replace(":query", "");
-const FINAL_ENDPOINT = `${BASE_ENDPOINT}:query`;
+const VERTEX_ENDPOINT = process.env.AGENT_ENGINE_ENDPOINT?.replace(":query", "") || "";
 
 async function getGoogleAccessToken() {
   const base64Key = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64;
@@ -66,171 +62,85 @@ async function getGoogleAccessToken() {
 }
 
 /**
- * Custom Vertex AI Agent with Dynamic OAuth
+ * Custom service adapter that proxies to Vertex AI with OAuth
  */
-class VertexAIAgent extends AbstractAgent {
-  constructor() {
-    super({
-      agentId: AGENT_NAME,
-      description: "Locus AI retail location intelligence agent",
-    });
-  }
+class VertexAIServiceAdapter {
+  async process(input: any): Promise<any> {
+    console.log("🚀 [Vertex Proxy] Processing request");
+    console.log("📊 [Vertex Proxy] Input keys:", Object.keys(input || {}));
 
-  protected run(input: RunAgentInput): Observable<BaseEvent> {
-    console.log("🚀 [VertexAI Agent] run() called");
-    console.log("📊 [VertexAI Agent] Input:", {
-      threadId: input.threadId,
-      runId: input.runId,
-      messageCount: input.messages?.length || 0,
-    });
+    try {
+      const token = await getGoogleAccessToken();
+      console.log("🔑 [Vertex Proxy] OAuth token obtained");
 
-    return new Observable<BaseEvent>((observer) => {
-      (async () => {
-        try {
-          // Generate fresh OAuth token
-          const token = await getGoogleAccessToken();
-          console.log("🔑 [VertexAI Agent] OAuth token obtained");
+      // Forward the request to Vertex AI exactly as CopilotKit sends it
+      const vertexPayload = {
+        input: input,
+      };
 
-          // Emit run started event
-          observer.next({
-            type: EventType.RUN_STARTED,
-            threadId: input.threadId,
-            runId: input.runId,
-          } as any);
+      const endpoint = `${VERTEX_ENDPOINT}:query`;
+      console.log("📤 [Vertex Proxy] Calling:", endpoint);
+      console.log("📤 [Vertex Proxy] Payload:", JSON.stringify(vertexPayload).substring(0, 500));
 
-          // Prepare payload for Vertex AI
-          const vertexPayload = {
-            input: {
-              messages: input.messages || [],
-              state: input.state || {},
-              thread_id: input.threadId,
-            },
-          };
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(vertexPayload),
+      });
 
-          console.log("📤 [VertexAI Agent] Calling:", FINAL_ENDPOINT);
-          console.log("📤 [VertexAI Agent] Payload:", JSON.stringify(vertexPayload).substring(0, 400));
+      console.log(`📥 [Vertex Proxy] Response status: ${response.status}`);
 
-          // Call Vertex AI
-          const response = await fetch(FINAL_ENDPOINT, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(vertexPayload),
-          });
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("❌ [Vertex Proxy] Error:", errorText.substring(0, 500));
+        throw new Error(`Vertex AI error ${response.status}: ${errorText}`);
+      }
 
-          console.log(`📥 [VertexAI Agent] Response status: ${response.status}`);
+      const result = await response.json();
+      console.log("✅ [Vertex Proxy] Success!");
+      console.log("✅ [Vertex Proxy] Response keys:", Object.keys(result));
+      console.log("✅ [Vertex Proxy] Full response:", JSON.stringify(result, null, 2));
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error("❌ [VertexAI Agent] Error:", errorText.substring(0, 500));
+      return result;
 
-            observer.next({
-              type: EventType.RUN_ERROR,
-              threadId: input.threadId,
-              runId: input.runId,
-              error: `Vertex AI error ${response.status}: ${errorText.substring(0, 200)}`,
-            } as any);
-
-            observer.complete();
-            return;
-          }
-
-          const result = await response.json();
-          console.log("✅ [VertexAI Agent] Success!");
-          console.log("✅ [VertexAI Agent] Response keys:", Object.keys(result));
-          console.log("✅ [VertexAI Agent] Full response:", JSON.stringify(result, null, 2));
-
-          // Extract content from response
-          let content = "";
-          let state = {};
-
-          if (result.output) {
-            content = typeof result.output === "string" ? result.output : JSON.stringify(result.output);
-            state = result.state || {};
-          } else if (result.content) {
-            content = result.content;
-            state = result.state || {};
-          } else if (result.messages && Array.isArray(result.messages)) {
-            const lastMessage = result.messages[result.messages.length - 1];
-            content = lastMessage?.content || JSON.stringify(result);
-            state = result.state || {};
-          } else if (result.response) {
-            content = result.response;
-            state = result.state || {};
-          } else {
-            content = JSON.stringify(result);
-          }
-
-          console.log("📝 [VertexAI Agent] Content length:", content.length);
-          console.log("📝 [VertexAI Agent] State:", state);
-
-          // Emit message events
-          const messageId = `msg_${Date.now()}`;
-
-          observer.next({
-            type: EventType.TEXT_MESSAGE_START,
-            messageId,
-          } as any);
-
-          observer.next({
-            type: EventType.TEXT_MESSAGE_CONTENT,
-            messageId,
-            delta: content,
-          } as any);
-
-          observer.next({
-            type: EventType.TEXT_MESSAGE_END,
-            messageId,
-          } as any);
-
-          // Emit run finished event
-          observer.next({
-            type: EventType.RUN_FINISHED,
-            threadId: input.threadId,
-            runId: input.runId,
-            state,
-          } as any);
-
-          observer.complete();
-
-        } catch (error: any) {
-          console.error("❌ [VertexAI Agent] Exception:", error.message);
-          console.error("❌ [VertexAI Agent] Stack:", error.stack);
-
-          observer.next({
-            type: EventType.RUN_ERROR,
-            threadId: input.threadId,
-            runId: input.runId,
-            error: `System error: ${error.message}`,
-          } as any);
-
-          observer.complete();
-        }
-      })();
-    });
+    } catch (error: any) {
+      console.error("❌ [Vertex Proxy] Exception:", error.message);
+      console.error("❌ [Vertex Proxy] Stack:", error.stack);
+      throw error;
+    }
   }
 }
-
-const serviceAdapter = new ExperimentalEmptyAdapter();
-
-const runtime = new CopilotRuntime({
-  agents: {
-    [AGENT_NAME]: new VertexAIAgent() as any,
-  },
-});
 
 export const POST = async (req: NextRequest) => {
   console.log("=".repeat(80));
   console.log("📥 [POST] CopilotKit request at", new Date().toISOString());
   console.log("=".repeat(80));
 
-  const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
-    runtime,
-    serviceAdapter,
-    endpoint: "/api/copilotkit",
-  });
+  try {
+    const serviceAdapter = new VertexAIServiceAdapter();
 
-  return handleRequest(req);
+    const runtime = new CopilotRuntime();
+
+    const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
+      runtime,
+      serviceAdapter: serviceAdapter as any,
+      endpoint: "/api/copilotkit",
+    });
+
+    const response = await handleRequest(req);
+    console.log("✅ [POST] Response ready");
+    return response;
+
+  } catch (error: any) {
+    console.error("❌ [POST] Fatal error:", error.message);
+    console.error("❌ [POST] Stack:", error.stack);
+    
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
 };
