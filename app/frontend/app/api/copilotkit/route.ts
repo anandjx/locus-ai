@@ -43,21 +43,15 @@ import {
   copilotRuntimeNextJSAppRouterEndpoint,
 } from "@copilotkit/runtime";
 import { NextRequest } from "next/server";
-import { HttpAgent } from "@ag-ui/client";
 import { GoogleAuth } from "google-auth-library";
 
 const AGENT_NAME = "locus";
-// We remove the ':query' suffix if it exists to make the URL clean
 const BASE_ENDPOINT = process.env.AGENT_ENGINE_ENDPOINT!.replace(":query", "");
 const FINAL_ENDPOINT = `${BASE_ENDPOINT}:query`;
 
-/**
- * Function to get a valid Google Access Token from the Base64 Service Account Key
- */
 async function getGoogleAccessToken() {
   const base64Key = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64;
   if (!base64Key) throw new Error("Missing GOOGLE_SERVICE_ACCOUNT_KEY_BASE64");
-
   const jsonKey = JSON.parse(Buffer.from(base64Key, "base64").toString("utf-8"));
 
   const auth = new GoogleAuth({
@@ -70,22 +64,48 @@ async function getGoogleAccessToken() {
   return tokenResponse.token;
 }
 
+/**
+ * Custom Agent implementation to bridge CopilotKit and Vertex AI Agent Engine
+ */
+const vertexAgent = {
+  execute: async ({ messages, state, threadId }: any) => {
+    const token = await getGoogleAccessToken();
+
+    // 1. Transform the payload for Vertex AI
+    // We wrap everything in 'input' and convert threadId to thread_id
+    const vertexPayload = {
+      input: {
+        messages: messages,
+        state: state,
+        thread_id: threadId, // ADK uses snake_case
+      },
+    };
+
+    // 2. Manual fetch to the Vertex Endpoint
+    const response = await fetch(FINAL_ENDPOINT, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(vertexPayload),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Vertex AI API Error:", errorText);
+      throw new Error(`Vertex AI returned ${response.status}: ${errorText}`);
+    }
+
+    // 3. Return the JSON response back to CopilotKit
+    return await response.json();
+  },
+};
+
 export const POST = async (req: NextRequest) => {
-  // 1. Generate the token
-  const token = await getGoogleAccessToken();
-
-  // 2. Initialize HttpAgent with Bearer Token in headers
-  const httpAgent = new HttpAgent({
-    url: FINAL_ENDPOINT,
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  // 3. Setup CopilotRuntime
   const runtime = new CopilotRuntime({
     agents: {
-      [AGENT_NAME]: httpAgent,
+      [AGENT_NAME]: vertexAgent, // Use our custom vertexAgent here
     },
   });
 
