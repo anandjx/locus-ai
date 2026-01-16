@@ -47,12 +47,13 @@ import {
 import { NextRequest } from "next/server";
 import { GoogleAuth } from "google-auth-library";
 
-// 1. Setup Constants
 const AGENT_NAME = "locus";
 const BASE_ENDPOINT = (process.env.AGENT_ENGINE_ENDPOINT || "").replace(":query", "");
 const FINAL_ENDPOINT = `${BASE_ENDPOINT}:query`;
 
-// 2. Google OAuth2 Token Helper
+/**
+ * 1. Google OAuth2 Token Generation
+ */
 async function getGoogleAccessToken() {
   const base64Key = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64;
   if (!base64Key) throw new Error("Missing GOOGLE_SERVICE_ACCOUNT_KEY_BASE64");
@@ -67,62 +68,73 @@ async function getGoogleAccessToken() {
 }
 
 /**
- * 3. The "LocusShimAgent"
- * This class provides the mandatory surface area for CopilotKit 1.50.1 state-sync.
+ * 2. The LocusVertexAgent Class (v1.50.1 Implementation)
+ * This class provides the full surface area required for state-sync and execution.
  */
 class LocusVertexAgent {
-  // Metadata required for the UI
   name: string = AGENT_NAME;
-  description: string = "Retail Intelligence Strategist";
+  description: string = "Locus Retail Strategy Agent";
 
-  // --- Mandatory State Sync Methods (Stubs) ---
-  // These stop the "o.setMessages is not a function" errors.
-  setMessages(messages: any[]) { /* No-op: Vertex handles history */ }
-  setState(state: any) { /* No-op: Vertex handles state */ }
-  setThreadId(threadId: string) { /* No-op: Vertex handles thread_id */ }
-  setDebug(debug: boolean) { /* No-op */ }
-
-  // Runtime calls this to create session-isolated instances
+  // v1.50.1 Lifecycle Shims: These prevent the runtime from hanging
+  setMessages(messages: any[]) { console.log("🔄 Syncing messages..."); }
+  setState(state: any) { console.log("🔄 Syncing state..."); }
+  setThreadId(threadId: string) { console.log("🔄 Syncing thread..."); }
+  setDebug(debug: boolean) { }
+  
+  // Mandatory for session isolation
   clone() {
     return new LocusVertexAgent();
   }
 
-  // --- Actual Execution Logic ---
-  async execute(params: any): Promise<any> {
-    const token = await getGoogleAccessToken();
+  // The actual execution bridge to Google Cloud
+  async execute({ messages, state, threadId }: any): Promise<any> {
+    console.log(`🚀 Executing Vertex Agent for thread: ${threadId}`);
+    
+    try {
+      const token = await getGoogleAccessToken();
 
-    // Payload transformation: wrap in 'input' and use snake_case for ADK
-    const vertexPayload = {
-      input: {
-        messages: params.messages,
-        state: params.state,
-        thread_id: params.threadId, 
-      },
-    };
+      const vertexPayload = {
+        input: {
+          messages: messages,
+          state: state,
+          thread_id: threadId, 
+        },
+      };
 
-    const response = await fetch(FINAL_ENDPOINT, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(vertexPayload),
-    });
+      const response = await fetch(FINAL_ENDPOINT, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(vertexPayload),
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Vertex AI API Error (${response.status}): ${errorText}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("❌ Vertex AI API Error:", errorText);
+        throw new Error(`Vertex AI Error: ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log("✅ Vertex AI Response Received");
+      return result;
+      
+    } catch (error) {
+      console.error("❌ Execution Failed:", error);
+      throw error;
     }
-
-    return await response.json();
   }
 }
 
-// 4. Main Route Handler
+/**
+ * 3. App Router POST Handler
+ */
 export const POST = async (req: NextRequest) => {
+  console.log("📥 Incoming CopilotKit Request");
+
   const runtime = new CopilotRuntime({
     agents: {
-      // We cast as 'any' to avoid the 25+ internal property check
       [AGENT_NAME]: new LocusVertexAgent() as any,
     },
   });
