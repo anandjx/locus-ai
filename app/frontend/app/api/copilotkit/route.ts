@@ -38,20 +38,22 @@
 // };
 
 
-
 import {
   CopilotRuntime,
   ExperimentalEmptyAdapter,
   copilotRuntimeNextJSAppRouterEndpoint,
-  CopilotAgent, // Add this import
 } from "@copilotkit/runtime";
 import { NextRequest } from "next/server";
 import { GoogleAuth } from "google-auth-library";
 
+// Configuration
 const AGENT_NAME = "locus";
 const BASE_ENDPOINT = process.env.AGENT_ENGINE_ENDPOINT!.replace(":query", "");
 const FINAL_ENDPOINT = `${BASE_ENDPOINT}:query`;
 
+/**
+ * Utility to fetch Google Access Token
+ */
 async function getGoogleAccessToken() {
   const base64Key = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64;
   if (!base64Key) throw new Error("Missing GOOGLE_SERVICE_ACCOUNT_KEY_BASE64");
@@ -68,19 +70,22 @@ async function getGoogleAccessToken() {
 }
 
 /**
- * Custom Vertex Agent Class
- * Inheriting from CopilotAgent satisfies the 'AbstractAgent' type requirement.
+ * Custom Vertex Agent 
+ * We manually define the agent object to satisfy the runtime requirements
+ * while transforming the payload for Vertex AI.
  */
-class VertexCopilotAgent extends CopilotAgent<any> {
-  async execute({ messages, state, threadId }: any): Promise<any> {
+const vertexAgent: any = {
+  name: AGENT_NAME,
+  description: "Locus Retail Strategy Agent on Vertex AI",
+  execute: async ({ messages, state, threadId }: any) => {
     const token = await getGoogleAccessToken();
 
-    // Transform for Vertex AI Reasoning Engine
+    // SOTA Fix: Wrap in 'input' and map threadId to thread_id for Vertex/ADK
     const vertexPayload = {
       input: {
         messages: messages,
         state: state,
-        thread_id: threadId,
+        thread_id: threadId, 
       },
     };
 
@@ -99,18 +104,12 @@ class VertexCopilotAgent extends CopilotAgent<any> {
     }
 
     return await response.json();
-  }
-}
-
-// Instantiate the class with the required metadata
-const vertexAgent = new VertexCopilotAgent({
-  name: AGENT_NAME,
-  description: "Locus Retail Strategy Agent on Vertex AI",
-});
+  },
+};
 
 export const POST = async (req: NextRequest) => {
   const runtime = new CopilotRuntime({
-    agents: [vertexAgent], // Pass as an array or within the object as per version
+    agents: [vertexAgent], 
   });
 
   const serviceAdapter = new ExperimentalEmptyAdapter();
