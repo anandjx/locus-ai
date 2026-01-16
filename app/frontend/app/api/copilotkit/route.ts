@@ -63,134 +63,149 @@ async function getGoogleAccessToken() {
 }
 
 /**
- * Custom Remote Agent Implementation
- * This bypasses the service adapter and implements the agent directly
+ * Vertex AI Agent Implementation for CopilotKit
  */
-class VertexAIRemoteAgent {
-  name = AGENT_NAME;
-  
-  async run(params: {
+class VertexAIAgent {
+  async execute(request: {
     messages: any[];
     threadId?: string;
     state?: any;
-  }): Promise<AsyncGenerator<any, void, unknown>> {
-    console.log("🚀 [VertexAI Agent] run() called");
-    console.log("📊 [VertexAI Agent] Messages:", params.messages?.length || 0);
-    console.log("📊 [VertexAI Agent] ThreadId:", params.threadId);
+  }): Promise<ReadableStream> {
+    console.log("🚀 [VertexAI Agent] execute() called");
+    console.log("📊 [VertexAI Agent] Messages:", request.messages?.length || 0);
+    console.log("📊 [VertexAI Agent] ThreadId:", request.threadId);
+
+    const encoder = new TextEncoder();
     
-    const self = this;
-    
-    return (async function* () {
-      try {
-        const token = await getGoogleAccessToken();
-        console.log("🔑 [VertexAI Agent] OAuth token obtained");
+    return new ReadableStream({
+      async start(controller) {
+        try {
+          const token = await getGoogleAccessToken();
+          console.log("🔑 [VertexAI Agent] OAuth token obtained");
 
-        // Transform messages
-        const transformedMessages = (params.messages || []).map((msg: any) => ({
-          role: msg.role === "assistant" ? "model" : msg.role,
-          content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
-        }));
+          // Transform messages
+          const transformedMessages = (request.messages || []).map((msg: any) => ({
+            role: msg.role === "assistant" ? "model" : msg.role,
+            content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
+          }));
 
-        const vertexPayload = {
-          input: {
-            messages: transformedMessages,
-            state: params.state || {},
-            thread_id: params.threadId || `thread_${Date.now()}`,
-          },
-        };
+          const vertexPayload = {
+            input: {
+              messages: transformedMessages,
+              state: request.state || {},
+              thread_id: request.threadId || `thread_${Date.now()}`,
+            },
+          };
 
-        console.log("📤 [VertexAI Agent] Calling:", FINAL_ENDPOINT);
-        console.log("📤 [VertexAI Agent] Payload:", JSON.stringify(vertexPayload).substring(0, 400));
+          console.log("📤 [VertexAI Agent] Calling:", FINAL_ENDPOINT);
+          console.log("📤 [VertexAI Agent] Payload:", JSON.stringify(vertexPayload).substring(0, 400));
 
-        const response = await fetch(FINAL_ENDPOINT, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(vertexPayload),
-        });
+          const response = await fetch(FINAL_ENDPOINT, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(vertexPayload),
+          });
 
-        console.log(`📥 [VertexAI Agent] Response status: ${response.status}`);
+          console.log(`📥 [VertexAI Agent] Response status: ${response.status}`);
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error("❌ [VertexAI Agent] Error:", errorText.substring(0, 500));
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error("❌ [VertexAI Agent] Error:", errorText.substring(0, 500));
+            
+            const errorChunk = encoder.encode(
+              JSON.stringify({
+                role: "assistant",
+                content: `Error ${response.status}: ${errorText.substring(0, 200)}`,
+              }) + "\n"
+            );
+            controller.enqueue(errorChunk);
+            controller.close();
+            return;
+          }
+
+          const result = await response.json();
+          console.log("✅ [VertexAI Agent] Success!");
+          console.log("✅ [VertexAI Agent] Response keys:", Object.keys(result));
+          console.log("✅ [VertexAI Agent] Full response:", JSON.stringify(result, null, 2));
+
+          // Extract content from various possible response structures
+          let content = "";
+          let state = {};
+
+          if (result.output) {
+            content = typeof result.output === "string" ? result.output : JSON.stringify(result.output);
+            state = result.state || {};
+          } else if (result.content) {
+            content = result.content;
+            state = result.state || {};
+          } else if (result.messages && Array.isArray(result.messages)) {
+            const lastMessage = result.messages[result.messages.length - 1];
+            content = lastMessage?.content || JSON.stringify(result);
+            state = result.state || {};
+          } else if (result.response) {
+            content = result.response;
+            state = result.state || {};
+          } else {
+            content = JSON.stringify(result);
+          }
+
+          console.log("📝 [VertexAI Agent] Content length:", content.length);
+          console.log("📝 [VertexAI Agent] State keys:", Object.keys(state));
+
+          // Send message chunk
+          const messageChunk = encoder.encode(
+            JSON.stringify({
+              role: "assistant",
+              content: content,
+            }) + "\n"
+          );
+          controller.enqueue(messageChunk);
+
+          // Send state update if present
+          if (Object.keys(state).length > 0) {
+            const stateChunk = encoder.encode(
+              JSON.stringify({
+                state: state,
+              }) + "\n"
+            );
+            controller.enqueue(stateChunk);
+          }
+
+          controller.close();
+
+        } catch (error: any) {
+          console.error("❌ [VertexAI Agent] Exception:", error.message);
+          console.error("❌ [VertexAI Agent] Stack:", error.stack);
           
-          yield {
-            role: "assistant",
-            content: `Error ${response.status}: ${errorText.substring(0, 200)}`,
-          };
-          return;
+          const errorChunk = encoder.encode(
+            JSON.stringify({
+              role: "assistant",
+              content: `System error: ${error.message}`,
+            }) + "\n"
+          );
+          controller.enqueue(errorChunk);
+          controller.close();
         }
-
-        const result = await response.json();
-        console.log("✅ [VertexAI Agent] Success!");
-        console.log("✅ [VertexAI Agent] Response keys:", Object.keys(result));
-        console.log("✅ [VertexAI Agent] Full response:", JSON.stringify(result, null, 2));
-
-        // Extract the actual response content
-        let content = "";
-        let state = {};
-
-        // Try different response structures Vertex AI might return
-        if (result.output) {
-          content = typeof result.output === "string" ? result.output : JSON.stringify(result.output);
-          state = result.state || {};
-        } else if (result.content) {
-          content = result.content;
-          state = result.state || {};
-        } else if (result.messages && Array.isArray(result.messages)) {
-          const lastMessage = result.messages[result.messages.length - 1];
-          content = lastMessage?.content || JSON.stringify(result);
-          state = result.state || {};
-        } else if (result.response) {
-          content = result.response;
-          state = result.state || {};
-        } else {
-          content = JSON.stringify(result);
-        }
-
-        console.log("📝 [VertexAI Agent] Extracted content length:", content.length);
-        console.log("📝 [VertexAI Agent] Extracted state keys:", Object.keys(state));
-
-        // Yield the message
-        yield {
-          role: "assistant",
-          content: content,
-        };
-
-        // Yield state update if present
-        if (Object.keys(state).length > 0) {
-          yield {
-            state: state,
-          };
-        }
-
-      } catch (error: any) {
-        console.error("❌ [VertexAI Agent] Exception:", error.message);
-        console.error("❌ [VertexAI Agent] Stack:", error.stack);
-        
-        yield {
-          role: "assistant",
-          content: `System error: ${error.message}`,
-        };
-      }
-    })();
+      },
+    });
   }
 }
 
 export const POST = async (req: NextRequest) => {
   console.log("=".repeat(80));
-  console.log("📥 [POST] CopilotKit request received at", new Date().toISOString());
+  console.log("📥 [POST] CopilotKit request at", new Date().toISOString());
   console.log("=".repeat(80));
 
   try {
     const runtime = new CopilotRuntime({
-      remoteActions: [
+      agents: [
         {
           name: AGENT_NAME,
-          agent: new VertexAIRemoteAgent() as any,
+          description: "Locus AI retail location intelligence agent",
+          agent: new VertexAIAgent() as any,
         }
       ],
     });
@@ -201,7 +216,7 @@ export const POST = async (req: NextRequest) => {
     });
 
     const response = await handleRequest(req);
-    console.log("✅ [POST] Request handled, returning response");
+    console.log("✅ [POST] Response ready");
     return response;
 
   } catch (error: any) {
@@ -211,7 +226,6 @@ export const POST = async (req: NextRequest) => {
     return new Response(
       JSON.stringify({ 
         error: error.message,
-        stack: error.stack?.substring(0, 500),
       }),
       { 
         status: 500, 
