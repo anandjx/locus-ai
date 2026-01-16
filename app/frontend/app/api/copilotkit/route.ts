@@ -37,26 +37,24 @@
 //   return handleRequest(req);
 // };
 
-
 import {
   CopilotRuntime,
   ExperimentalEmptyAdapter,
   copilotRuntimeNextJSAppRouterEndpoint,
-  LangGraphHttpAgent,
 } from "@copilotkit/runtime";
 import { NextRequest } from "next/server";
+import { HttpAgent } from "@ag-ui/client";
 
-const AGENT_NAME = "locus";
+const AGENT_NAME = "locus"; // agent name used in AG-UI protocol
+const AGENT_ENGINE_ENDPOINT = process.env.AGENT_ENGINE_ENDPOINT!;
 
-// 🔑 Vertex AI Agent Engine endpoint (NOT localhost)
-const AGENT_ENGINE_ENDPOINT =
-  process.env.AGENT_ENGINE_ENDPOINT!;
+const httpAgent = new HttpAgent({
+  url: AGENT_ENGINE_ENDPOINT,
+});
 
 const runtime = new CopilotRuntime({
   agents: {
-    [AGENT_NAME]: new LangGraphHttpAgent({
-      url: AGENT_ENGINE_ENDPOINT,
-    }),
+    [AGENT_NAME]: httpAgent,
   },
 });
 
