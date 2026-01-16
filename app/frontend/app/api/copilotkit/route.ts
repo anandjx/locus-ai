@@ -128,12 +128,12 @@ export const POST = async (req: NextRequest) => {
       [AGENT_NAME]: new LocusVertexAgent() as any,
     },
   });
-
+console.log("📥 Incoming Request Detected 2");
   const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
     runtime,
     serviceAdapter: new ExperimentalEmptyAdapter(),
     endpoint: "/api/copilotkit",
   });
-
+console.log("📥 Incoming Request Detected 3");
   return handleRequest(req);
 };
