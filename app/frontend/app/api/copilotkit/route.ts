@@ -65,75 +65,63 @@ async function getGoogleAccessToken() {
 }
 
 /**
- * The "LocusProductionAgent"
- * This satisfies all 1.50.1 handshake requirements.
+ * Robust Agent Implementation for CopilotKit 1.50.1
+ * We use a class to ensure the .clone() method is correctly placed on the prototype.
  */
 class LocusVertexAgent {
-  // Metadata & State required for the v1.50.1 Handshake
   name: string = AGENT_NAME;
-  description: string = "Locus Retail Strategist";
-  isRunning: boolean = false; // Tells the UI the agent is ready to work
-  status: string = "idle";      // Crucial status flag
+  description: string = "Retail Intelligence Strategist";
 
-  // Lifecycle Stubs to prevent silent hangs
-  setMessages(messages: any[]) { }
-  setState(state: any) { }
-  setThreadId(threadId: string) { }
-  setDebug(debug: boolean) { }
-
-  // Mandatory for session isolation
+  // This is what the runtime was missing!
   clone() {
     return new LocusVertexAgent();
   }
 
-  // Actual execution bridge
-  async execute({ messages, state, threadId }: any): Promise<any> {
-    console.log("🚀 AGENT TRIGGERED: Connecting to Vertex AI...");
-    this.isRunning = true;
-    this.status = "running";
+  async execute({ messages, state, threadId }: any) {
+    const token = await getGoogleAccessToken();
 
-    try {
-      const token = await getGoogleAccessToken();
-      const vertexPayload = {
-        input: { messages, state, thread_id: threadId },
-      };
+    // Payload transformation for Vertex AI Reasoning Engine
+    const vertexPayload = {
+      input: {
+        messages: messages,
+        state: state,
+        thread_id: threadId, 
+      },
+    };
 
-      const response = await fetch(FINAL_ENDPOINT, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(vertexPayload),
-      });
+    const response = await fetch(FINAL_ENDPOINT, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(vertexPayload),
+    });
 
-      if (!response.ok) {
-        throw new Error(`Vertex API Error: ${await response.text()}`);
-      }
-
-      const result = await response.json();
-      console.log("✅ SUCCESS: Response received from Vertex AI");
-      return result;
-    } finally {
-      this.isRunning = false;
-      this.status = "idle";
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Vertex AI API Error (${response.status}): ${errorText}`);
     }
+
+    return await response.json();
   }
 }
 
 export const POST = async (req: NextRequest) => {
-  console.log("📥 Incoming Request Detected");
+  // Use 'as any' here only to satisfy the Record structure while keeping the logic
   const runtime = new CopilotRuntime({
     agents: {
       [AGENT_NAME]: new LocusVertexAgent() as any,
     },
   });
-console.log("📥 Incoming Request Detected 2");
+
+  const serviceAdapter = new ExperimentalEmptyAdapter();
+
   const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
     runtime,
-    serviceAdapter: new ExperimentalEmptyAdapter(),
+    serviceAdapter,
     endpoint: "/api/copilotkit",
   });
-console.log("📥 Incoming Request Detected 3");
+
   return handleRequest(req);
 };
