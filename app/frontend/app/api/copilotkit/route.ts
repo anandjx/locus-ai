@@ -42,17 +42,21 @@ import {
   CopilotRuntime,
   ExperimentalEmptyAdapter,
   copilotRuntimeNextJSAppRouterEndpoint,
+  LangGraphHttpAgent,
 } from "@copilotkit/runtime";
 import { NextRequest } from "next/server";
 
-// AG-UI agent name — MUST match backend app_name
 const AGENT_NAME = "locus";
+
+// 🔑 Vertex AI Agent Engine endpoint (NOT localhost)
+const AGENT_ENGINE_ENDPOINT =
+  process.env.AGENT_ENGINE_ENDPOINT!;
 
 const runtime = new CopilotRuntime({
   agents: {
-    [AGENT_NAME]: {
-      type: "ag-ui",
-    },
+    [AGENT_NAME]: new LangGraphHttpAgent({
+      url: AGENT_ENGINE_ENDPOINT,
+    }),
   },
 });
 
