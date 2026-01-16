@@ -63,7 +63,7 @@ async function getGoogleAccessToken() {
 }
 
 /**
- * Vertex AI Agent - Direct Implementation
+ * Vertex AI Agent Implementation
  */
 class VertexAIAgent {
   name = AGENT_NAME;
@@ -200,9 +200,9 @@ export const POST = async (req: NextRequest) => {
 
   try {
     const runtime = new CopilotRuntime({
-      agents: [
-        new VertexAIAgent() as any,
-      ],
+      agents: {
+        [AGENT_NAME]: new VertexAIAgent() as any,
+      },
     });
 
     const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
