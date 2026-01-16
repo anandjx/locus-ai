@@ -37,23 +37,21 @@
 //   return handleRequest(req);
 // };
 
-
 import {
   CopilotRuntime,
   ExperimentalEmptyAdapter,
   copilotRuntimeNextJSAppRouterEndpoint,
+  LangGraphAgent, // Use LangGraphAgent for v1.50.1 compatibility
 } from "@copilotkit/runtime";
 import { NextRequest } from "next/server";
 import { GoogleAuth } from "google-auth-library";
 
-// Configuration
+// 1. Configuration Constants
 const AGENT_NAME = "locus";
 const BASE_ENDPOINT = process.env.AGENT_ENGINE_ENDPOINT!.replace(":query", "");
 const FINAL_ENDPOINT = `${BASE_ENDPOINT}:query`;
 
-/**
- * Utility to fetch Google Access Token from Service Account Key
- */
+// 2. Google Authentication Helper
 async function getGoogleAccessToken() {
   const base64Key = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64;
   if (!base64Key) throw new Error("Missing GOOGLE_SERVICE_ACCOUNT_KEY_BASE64");
@@ -70,21 +68,20 @@ async function getGoogleAccessToken() {
 }
 
 /**
- * Custom Vertex Agent implementation
- * This object satisfies the AbstractAgent interface expected by CopilotKit
+ * 3. Custom Vertex AI Agent Wrapper
+ * We extend LangGraphAgent to inherit all 25+ required properties for v1.50.1
  */
-const vertexAgent = {
-  name: AGENT_NAME,
-  description: "Locus Retail Strategy Agent on Vertex AI",
-  execute: async ({ messages, state, threadId }: any) => {
+class VertexAIStrategyAgent extends LangGraphAgent {
+  // Override the execute method to transform the payload for Vertex AI
+  async execute(params: any): Promise<any> {
     const token = await getGoogleAccessToken();
 
-    // The "Input Wrapper" pattern required by Vertex AI Reasoning Engine
+    // Transform payload: Wrap everything in 'input' and use snake_case for thread_id
     const vertexPayload = {
       input: {
-        messages: messages,
-        state: state,
-        thread_id: threadId, 
+        messages: params.messages,
+        state: params.state,
+        thread_id: params.threadId,
       },
     };
 
@@ -98,19 +95,27 @@ const vertexAgent = {
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Vertex AI Error (${response.status}): ${errorText}`);
+      const errorData = await response.text();
+      console.error("Vertex AI Error:", errorData);
+      throw new Error(`Vertex AI API Error (${response.status}): ${errorData}`);
     }
 
     return await response.json();
-  },
-};
+  }
+}
 
+// 4. Initialize the Agent
+const locusAgent = new VertexAIStrategyAgent({
+  name: AGENT_NAME,
+  description: "Retail Intelligence Strategist",
+});
+
+// 5. App Router Route Handler
 export const POST = async (req: NextRequest) => {
-  // VERSION FIX: In v1.50.1, agents must be a Record (Map), not an Array
   const runtime = new CopilotRuntime({
+    // Record<string, AbstractAgent> mapping for v1.50.1
     agents: {
-      [AGENT_NAME]: vertexAgent, 
+      [AGENT_NAME]: locusAgent,
     },
   });
 
