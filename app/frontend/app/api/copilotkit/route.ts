@@ -37,10 +37,13 @@
 //   return handleRequest(req);
 // };
 
+
+
 import {
   CopilotRuntime,
   ExperimentalEmptyAdapter,
   copilotRuntimeNextJSAppRouterEndpoint,
+  CopilotAgent, // Add this import
 } from "@copilotkit/runtime";
 import { NextRequest } from "next/server";
 import { GoogleAuth } from "google-auth-library";
@@ -65,23 +68,22 @@ async function getGoogleAccessToken() {
 }
 
 /**
- * Custom Agent implementation to bridge CopilotKit and Vertex AI Agent Engine
+ * Custom Vertex Agent Class
+ * Inheriting from CopilotAgent satisfies the 'AbstractAgent' type requirement.
  */
-const vertexAgent = {
-  execute: async ({ messages, state, threadId }: any) => {
+class VertexCopilotAgent extends CopilotAgent<any> {
+  async execute({ messages, state, threadId }: any): Promise<any> {
     const token = await getGoogleAccessToken();
 
-    // 1. Transform the payload for Vertex AI
-    // We wrap everything in 'input' and convert threadId to thread_id
+    // Transform for Vertex AI Reasoning Engine
     const vertexPayload = {
       input: {
         messages: messages,
         state: state,
-        thread_id: threadId, // ADK uses snake_case
+        thread_id: threadId,
       },
     };
 
-    // 2. Manual fetch to the Vertex Endpoint
     const response = await fetch(FINAL_ENDPOINT, {
       method: "POST",
       headers: {
@@ -93,20 +95,22 @@ const vertexAgent = {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("Vertex AI API Error:", errorText);
-      throw new Error(`Vertex AI returned ${response.status}: ${errorText}`);
+      throw new Error(`Vertex AI Error (${response.status}): ${errorText}`);
     }
 
-    // 3. Return the JSON response back to CopilotKit
     return await response.json();
-  },
-};
+  }
+}
+
+// Instantiate the class with the required metadata
+const vertexAgent = new VertexCopilotAgent({
+  name: AGENT_NAME,
+  description: "Locus Retail Strategy Agent on Vertex AI",
+});
 
 export const POST = async (req: NextRequest) => {
   const runtime = new CopilotRuntime({
-    agents: {
-      [AGENT_NAME]: vertexAgent, // Use our custom vertexAgent here
-    },
+    agents: [vertexAgent], // Pass as an array or within the object as per version
   });
 
   const serviceAdapter = new ExperimentalEmptyAdapter();
