@@ -52,7 +52,7 @@ const BASE_ENDPOINT = process.env.AGENT_ENGINE_ENDPOINT!.replace(":query", "");
 const FINAL_ENDPOINT = `${BASE_ENDPOINT}:query`;
 
 /**
- * Utility to fetch Google Access Token
+ * Utility to fetch Google Access Token from Service Account Key
  */
 async function getGoogleAccessToken() {
   const base64Key = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64;
@@ -70,17 +70,16 @@ async function getGoogleAccessToken() {
 }
 
 /**
- * Custom Vertex Agent 
- * We manually define the agent object to satisfy the runtime requirements
- * while transforming the payload for Vertex AI.
+ * Custom Vertex Agent implementation
+ * This object satisfies the AbstractAgent interface expected by CopilotKit
  */
-const vertexAgent: any = {
+const vertexAgent = {
   name: AGENT_NAME,
   description: "Locus Retail Strategy Agent on Vertex AI",
   execute: async ({ messages, state, threadId }: any) => {
     const token = await getGoogleAccessToken();
 
-    // SOTA Fix: Wrap in 'input' and map threadId to thread_id for Vertex/ADK
+    // The "Input Wrapper" pattern required by Vertex AI Reasoning Engine
     const vertexPayload = {
       input: {
         messages: messages,
@@ -108,8 +107,11 @@ const vertexAgent: any = {
 };
 
 export const POST = async (req: NextRequest) => {
+  // VERSION FIX: In v1.50.1, agents must be a Record (Map), not an Array
   const runtime = new CopilotRuntime({
-    agents: [vertexAgent], 
+    agents: {
+      [AGENT_NAME]: vertexAgent, 
+    },
   });
 
   const serviceAdapter = new ExperimentalEmptyAdapter();
