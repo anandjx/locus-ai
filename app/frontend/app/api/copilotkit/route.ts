@@ -63,9 +63,12 @@ async function getGoogleAccessToken() {
 }
 
 /**
- * Vertex AI Agent Implementation for CopilotKit
+ * Vertex AI Agent - Direct Implementation
  */
 class VertexAIAgent {
+  name = AGENT_NAME;
+  description = "Locus AI retail location intelligence agent";
+
   async execute(request: {
     messages: any[];
     threadId?: string;
@@ -83,7 +86,6 @@ class VertexAIAgent {
           const token = await getGoogleAccessToken();
           console.log("🔑 [VertexAI Agent] OAuth token obtained");
 
-          // Transform messages
           const transformedMessages = (request.messages || []).map((msg: any) => ({
             role: msg.role === "assistant" ? "model" : msg.role,
             content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
@@ -131,7 +133,6 @@ class VertexAIAgent {
           console.log("✅ [VertexAI Agent] Response keys:", Object.keys(result));
           console.log("✅ [VertexAI Agent] Full response:", JSON.stringify(result, null, 2));
 
-          // Extract content from various possible response structures
           let content = "";
           let state = {};
 
@@ -155,7 +156,6 @@ class VertexAIAgent {
           console.log("📝 [VertexAI Agent] Content length:", content.length);
           console.log("📝 [VertexAI Agent] State keys:", Object.keys(state));
 
-          // Send message chunk
           const messageChunk = encoder.encode(
             JSON.stringify({
               role: "assistant",
@@ -164,7 +164,6 @@ class VertexAIAgent {
           );
           controller.enqueue(messageChunk);
 
-          // Send state update if present
           if (Object.keys(state).length > 0) {
             const stateChunk = encoder.encode(
               JSON.stringify({
@@ -202,11 +201,7 @@ export const POST = async (req: NextRequest) => {
   try {
     const runtime = new CopilotRuntime({
       agents: [
-        {
-          name: AGENT_NAME,
-          description: "Locus AI retail location intelligence agent",
-          agent: new VertexAIAgent() as any,
-        }
+        new VertexAIAgent() as any,
       ],
     });
 
