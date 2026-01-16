@@ -47,51 +47,45 @@ import {
 import { NextRequest } from "next/server";
 import { GoogleAuth } from "google-auth-library";
 
-// 1. Setup Constants
 const AGENT_NAME = "locus";
 const BASE_ENDPOINT = (process.env.AGENT_ENGINE_ENDPOINT || "").replace(":query", "");
 const FINAL_ENDPOINT = `${BASE_ENDPOINT}:query`;
 
-// 2. Google OAuth2 Token Helper
 async function getGoogleAccessToken() {
   const base64Key = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64;
   if (!base64Key) throw new Error("Missing GOOGLE_SERVICE_ACCOUNT_KEY_BASE64");
-  
   const jsonKey = JSON.parse(Buffer.from(base64Key, "base64").toString("utf-8"));
-
   const auth = new GoogleAuth({
     credentials: jsonKey,
     scopes: ["https://www.googleapis.com/auth/cloud-platform"],
   });
-
   const client = await auth.getClient();
   const tokenResponse = await client.getAccessToken();
   return tokenResponse.token;
 }
 
 /**
- * 3. Custom Vertex AI Agent Implementation
- * Fixed: Added .clone() to satisfy the internal CopilotKit thread safety requirements.
+ * Robust Agent Implementation for CopilotKit 1.50.1
+ * We use a class to ensure the .clone() method is correctly placed on the prototype.
  */
-const vertexAgent: any = {
-  name: AGENT_NAME,
-  description: "Locus Retail Strategy Agent",
+class LocusVertexAgent {
+  name: string = AGENT_NAME;
+  description: string = "Retail Intelligence Strategist";
 
-  // CRITICAL FIX: The runtime calls this to isolate session state for each request.
-  // Without this, you get the "i[r].clone is not a function" error.
-  clone: function() {
-    return { ...this }; 
-  },
+  // This is what the runtime was missing!
+  clone() {
+    return new LocusVertexAgent();
+  }
 
-  execute: async (params: any): Promise<any> => {
+  async execute({ messages, state, threadId }: any) {
     const token = await getGoogleAccessToken();
 
-    // The 'input' wrapper is MANDATORY for Vertex AI Reasoning Engine
+    // Payload transformation for Vertex AI Reasoning Engine
     const vertexPayload = {
       input: {
-        messages: params.messages,
-        state: params.state,
-        thread_id: params.threadId, 
+        messages: messages,
+        state: state,
+        thread_id: threadId, 
       },
     };
 
@@ -110,14 +104,14 @@ const vertexAgent: any = {
     }
 
     return await response.json();
-  },
-};
+  }
+}
 
-// 4. Main Route Handler
 export const POST = async (req: NextRequest) => {
+  // Use 'as any' here only to satisfy the Record structure while keeping the logic
   const runtime = new CopilotRuntime({
     agents: {
-      [AGENT_NAME]: vertexAgent,
+      [AGENT_NAME]: new LocusVertexAgent() as any,
     },
   });
 
