@@ -47,10 +47,12 @@ import {
 import { NextRequest } from "next/server";
 import { GoogleAuth } from "google-auth-library";
 
+// 1. Setup Constants
 const AGENT_NAME = "locus";
 const BASE_ENDPOINT = (process.env.AGENT_ENGINE_ENDPOINT || "").replace(":query", "");
 const FINAL_ENDPOINT = `${BASE_ENDPOINT}:query`;
 
+// 2. Google OAuth2 Token Helper
 async function getGoogleAccessToken() {
   const base64Key = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64;
   if (!base64Key) throw new Error("Missing GOOGLE_SERVICE_ACCOUNT_KEY_BASE64");
@@ -65,27 +67,36 @@ async function getGoogleAccessToken() {
 }
 
 /**
- * Robust Agent Implementation for CopilotKit 1.50.1
- * We use a class to ensure the .clone() method is correctly placed on the prototype.
+ * 3. The "LocusShimAgent"
+ * This class provides the mandatory surface area for CopilotKit 1.50.1 state-sync.
  */
 class LocusVertexAgent {
+  // Metadata required for the UI
   name: string = AGENT_NAME;
   description: string = "Retail Intelligence Strategist";
 
-  // This is what the runtime was missing!
+  // --- Mandatory State Sync Methods (Stubs) ---
+  // These stop the "o.setMessages is not a function" errors.
+  setMessages(messages: any[]) { /* No-op: Vertex handles history */ }
+  setState(state: any) { /* No-op: Vertex handles state */ }
+  setThreadId(threadId: string) { /* No-op: Vertex handles thread_id */ }
+  setDebug(debug: boolean) { /* No-op */ }
+
+  // Runtime calls this to create session-isolated instances
   clone() {
     return new LocusVertexAgent();
   }
 
-  async execute({ messages, state, threadId }: any) {
+  // --- Actual Execution Logic ---
+  async execute(params: any): Promise<any> {
     const token = await getGoogleAccessToken();
 
-    // Payload transformation for Vertex AI Reasoning Engine
+    // Payload transformation: wrap in 'input' and use snake_case for ADK
     const vertexPayload = {
       input: {
-        messages: messages,
-        state: state,
-        thread_id: threadId, 
+        messages: params.messages,
+        state: params.state,
+        thread_id: params.threadId, 
       },
     };
 
@@ -107,10 +118,11 @@ class LocusVertexAgent {
   }
 }
 
+// 4. Main Route Handler
 export const POST = async (req: NextRequest) => {
-  // Use 'as any' here only to satisfy the Record structure while keeping the logic
   const runtime = new CopilotRuntime({
     agents: {
+      // We cast as 'any' to avoid the 25+ internal property check
       [AGENT_NAME]: new LocusVertexAgent() as any,
     },
   });
