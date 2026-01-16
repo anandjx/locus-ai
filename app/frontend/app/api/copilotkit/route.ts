@@ -40,7 +40,6 @@
 
 import {
   CopilotRuntime,
-  ExperimentalEmptyAdapter,
   copilotRuntimeNextJSAppRouterEndpoint,
 } from "@copilotkit/runtime";
 import { NextRequest } from "next/server";
@@ -63,59 +62,26 @@ async function getGoogleAccessToken() {
   return tokenResponse.token;
 }
 
-class LocusVertexAgent {
-  name: string = AGENT_NAME;
-  description: string = "Locus Retail Strategy Agent";
-  
-  // Instance-level state preservation
-  private currentThreadId: string | null = null;
-  private currentMessages: any[] = [];
-  private currentState: any = {};
-
-  setMessages(messages: any[]) { 
-    console.log("🔄 Syncing messages:", messages.length);
-    this.currentMessages = messages;
-  }
-  
-  setState(state: any) { 
-    console.log("🔄 Syncing state:", Object.keys(state || {}));
-    this.currentState = state;
-  }
-  
-  setThreadId(threadId: string) { 
-    console.log("🔄 Syncing thread:", threadId);
-    this.currentThreadId = threadId;
-  }
-  
-  setDebug(debug: boolean) { }
-  
-  clone() {
-    const cloned = new LocusVertexAgent();
-    // Preserve state in the clone
-    cloned.currentThreadId = this.currentThreadId;
-    cloned.currentMessages = [...this.currentMessages];
-    cloned.currentState = { ...this.currentState };
-    return cloned;
-  }
-
-  async execute({ messages, state, threadId }: any): Promise<any> {
-    console.log(`🚀 [EXECUTE CALLED] Thread: ${threadId}, Messages: ${messages?.length || 0}`);
-    
-    // Use instance state if parameters are missing
-    const finalMessages = messages || this.currentMessages;
-    const finalState = state || this.currentState;
-    const finalThreadId = threadId || this.currentThreadId || `thread_${Date.now()}`;
-
-    if (!finalMessages || finalMessages.length === 0) {
-      console.warn("⚠️ No messages to process");
-      return { content: "No input received" };
-    }
+/**
+ * Custom LangGraph Service Adapter for Vertex AI
+ * This implements the protocol CopilotKit expects when agent="locus" is set
+ */
+class VertexAILangGraphAdapter {
+  async process(request: {
+    messages: any[];
+    threadId?: string;
+    state?: any;
+  }): Promise<any> {
+    console.log("🚀 [VertexAI Adapter] Processing request");
+    console.log("📊 [VertexAI Adapter] Messages:", request.messages?.length || 0);
+    console.log("📊 [VertexAI Adapter] ThreadId:", request.threadId);
 
     try {
       const token = await getGoogleAccessToken();
+      console.log("🔑 [VertexAI Adapter] OAuth token obtained");
 
-      // Transform CopilotKit messages to Vertex AI format
-      const transformedMessages = finalMessages.map((msg: any) => ({
+      // Transform messages to Vertex AI format
+      const transformedMessages = (request.messages || []).map((msg: any) => ({
         role: msg.role === "assistant" ? "model" : msg.role,
         content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
       }));
@@ -123,16 +89,13 @@ class LocusVertexAgent {
       const vertexPayload = {
         input: {
           messages: transformedMessages,
-          state: finalState,
-          thread_id: finalThreadId,
+          state: request.state || {},
+          thread_id: request.threadId || `thread_${Date.now()}`,
         },
       };
 
-      console.log("📤 Sending to Vertex AI:", {
-        endpoint: FINAL_ENDPOINT,
-        messageCount: transformedMessages.length,
-        threadId: finalThreadId,
-      });
+      console.log("📤 [VertexAI Adapter] Calling:", FINAL_ENDPOINT);
+      console.log("📤 [VertexAI Adapter] Payload preview:", JSON.stringify(vertexPayload).substring(0, 300));
 
       const response = await fetch(FINAL_ENDPOINT, {
         method: "POST",
@@ -143,76 +106,81 @@ class LocusVertexAgent {
         body: JSON.stringify(vertexPayload),
       });
 
+      console.log(`📥 [VertexAI Adapter] Response status: ${response.status}`);
+
       if (!response.ok) {
         const errorText = await response.text();
-        console.error("❌ Vertex AI API Error:", {
-          status: response.status,
-          statusText: response.statusText,
-          body: errorText,
-        });
-        
-        // Return error in CopilotKit-compatible format
-        return {
-          content: `Error: ${response.status} - ${errorText.substring(0, 200)}`,
-          error: true,
-        };
+        console.error("❌ [VertexAI Adapter] Error:", errorText.substring(0, 500));
+        throw new Error(`Vertex AI returned ${response.status}: ${errorText.substring(0, 200)}`);
       }
 
       const result = await response.json();
-      console.log("✅ Vertex AI Response:", {
-        hasContent: !!result.content,
-        hasOutput: !!result.output,
-        keys: Object.keys(result),
-      });
-      
-      // Ensure response has expected format for CopilotKit
+      console.log("✅ [VertexAI Adapter] Success! Keys:", Object.keys(result));
+      console.log("✅ [VertexAI Adapter] Result preview:", JSON.stringify(result).substring(0, 500));
+
+      // Return in the format CopilotKit expects
       return {
-        content: result.content || result.output || JSON.stringify(result),
-        ...result,
+        messages: [
+          {
+            role: "assistant",
+            content: result.content || result.output || result.response || JSON.stringify(result),
+          }
+        ],
+        state: result.state || {},
       };
-      
+
     } catch (error: any) {
-      console.error("❌ Execution Failed:", {
-        message: error.message,
-        stack: error.stack?.substring(0, 300),
-      });
+      console.error("❌ [VertexAI Adapter] Exception:", error.message);
+      console.error("❌ [VertexAI Adapter] Stack:", error.stack?.substring(0, 500));
       
-      // Return error in user-friendly format
+      // Return error as assistant message so UI shows it
       return {
-        content: `System Error: ${error.message}`,
-        error: true,
+        messages: [
+          {
+            role: "assistant",
+            content: `I encountered an error: ${error.message}`,
+          }
+        ],
+        state: {},
       };
     }
   }
 }
 
 export const POST = async (req: NextRequest) => {
-  console.log("📥 [POST] CopilotKit Request Received");
-  
-  try {
-    const runtime = new CopilotRuntime({
-      agents: {
-        [AGENT_NAME]: new LocusVertexAgent() as any,
-      },
-    });
+  console.log("=".repeat(80));
+  console.log("📥 [POST] CopilotKit request received");
+  console.log("=".repeat(80));
 
-    const serviceAdapter = new ExperimentalEmptyAdapter();
+  try {
+    const serviceAdapter = new VertexAILangGraphAdapter();
+
+    const runtime = new CopilotRuntime({
+      // Don't register agents here - the adapter handles it
+    });
 
     const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
       runtime,
-      serviceAdapter,
+      serviceAdapter: serviceAdapter as any,
       endpoint: "/api/copilotkit",
     });
 
     const response = await handleRequest(req);
     console.log("✅ [POST] Request handled successfully");
     return response;
-    
+
   } catch (error: any) {
-    console.error("❌ [POST] Handler failed:", error);
+    console.error("❌ [POST] Fatal error:", error.message);
+    console.error("❌ [POST] Stack:", error.stack);
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      JSON.stringify({ 
+        error: error.message,
+        hint: "Check Vercel logs for details"
+      }),
+      { 
+        status: 500, 
+        headers: { "Content-Type": "application/json" } 
+      }
     );
   }
 };
