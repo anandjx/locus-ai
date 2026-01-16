@@ -51,9 +51,6 @@ const AGENT_NAME = "locus";
 const BASE_ENDPOINT = (process.env.AGENT_ENGINE_ENDPOINT || "").replace(":query", "");
 const FINAL_ENDPOINT = `${BASE_ENDPOINT}:query`;
 
-/**
- * 1. Google OAuth2 Token Generation
- */
 async function getGoogleAccessToken() {
   const base64Key = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64;
   if (!base64Key) throw new Error("Missing GOOGLE_SERVICE_ACCOUNT_KEY_BASE64");
@@ -68,37 +65,37 @@ async function getGoogleAccessToken() {
 }
 
 /**
- * 2. The LocusVertexAgent Class (v1.50.1 Implementation)
- * This class provides the full surface area required for state-sync and execution.
+ * The "LocusProductionAgent"
+ * This satisfies all 1.50.1 handshake requirements.
  */
 class LocusVertexAgent {
+  // Metadata & State required for the v1.50.1 Handshake
   name: string = AGENT_NAME;
-  description: string = "Locus Retail Strategy Agent";
+  description: string = "Locus Retail Strategist";
+  isRunning: boolean = false; // Tells the UI the agent is ready to work
+  status: string = "idle";      // Crucial status flag
 
-  // v1.50.1 Lifecycle Shims: These prevent the runtime from hanging
-  setMessages(messages: any[]) { console.log("🔄 Syncing messages..."); }
-  setState(state: any) { console.log("🔄 Syncing state..."); }
-  setThreadId(threadId: string) { console.log("🔄 Syncing thread..."); }
+  // Lifecycle Stubs to prevent silent hangs
+  setMessages(messages: any[]) { }
+  setState(state: any) { }
+  setThreadId(threadId: string) { }
   setDebug(debug: boolean) { }
-  
+
   // Mandatory for session isolation
   clone() {
     return new LocusVertexAgent();
   }
 
-  // The actual execution bridge to Google Cloud
+  // Actual execution bridge
   async execute({ messages, state, threadId }: any): Promise<any> {
-    console.log(`🚀 Executing Vertex Agent for thread: ${threadId}`);
-    
+    console.log("🚀 AGENT TRIGGERED: Connecting to Vertex AI...");
+    this.isRunning = true;
+    this.status = "running";
+
     try {
       const token = await getGoogleAccessToken();
-
       const vertexPayload = {
-        input: {
-          messages: messages,
-          state: state,
-          thread_id: threadId, 
-        },
+        input: { messages, state, thread_id: threadId },
       };
 
       const response = await fetch(FINAL_ENDPOINT, {
@@ -111,39 +108,30 @@ class LocusVertexAgent {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error("❌ Vertex AI API Error:", errorText);
-        throw new Error(`Vertex AI Error: ${errorText}`);
+        throw new Error(`Vertex API Error: ${await response.text()}`);
       }
 
       const result = await response.json();
-      console.log("✅ Vertex AI Response Received");
+      console.log("✅ SUCCESS: Response received from Vertex AI");
       return result;
-      
-    } catch (error) {
-      console.error("❌ Execution Failed:", error);
-      throw error;
+    } finally {
+      this.isRunning = false;
+      this.status = "idle";
     }
   }
 }
 
-/**
- * 3. App Router POST Handler
- */
 export const POST = async (req: NextRequest) => {
-  console.log("📥 Incoming CopilotKit Request");
-
+  console.log("📥 Incoming Request Detected");
   const runtime = new CopilotRuntime({
     agents: {
       [AGENT_NAME]: new LocusVertexAgent() as any,
     },
   });
 
-  const serviceAdapter = new ExperimentalEmptyAdapter();
-
   const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
     runtime,
-    serviceAdapter,
+    serviceAdapter: new ExperimentalEmptyAdapter(),
     endpoint: "/api/copilotkit",
   });
 
