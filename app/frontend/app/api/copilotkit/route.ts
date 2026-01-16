@@ -44,23 +44,53 @@ import {
 } from "@copilotkit/runtime";
 import { NextRequest } from "next/server";
 import { HttpAgent } from "@ag-ui/client";
+import { GoogleAuth } from "google-auth-library";
 
-const AGENT_NAME = "locus"; // agent name used in AG-UI protocol
-const AGENT_ENGINE_ENDPOINT = process.env.AGENT_ENGINE_ENDPOINT!;
+const AGENT_NAME = "locus";
+// We remove the ':query' suffix if it exists to make the URL clean
+const BASE_ENDPOINT = process.env.AGENT_ENGINE_ENDPOINT!.replace(":query", "");
+const FINAL_ENDPOINT = `${BASE_ENDPOINT}:query`;
 
-const httpAgent = new HttpAgent({
-  url: AGENT_ENGINE_ENDPOINT,
-});
+/**
+ * Function to get a valid Google Access Token from the Base64 Service Account Key
+ */
+async function getGoogleAccessToken() {
+  const base64Key = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64;
+  if (!base64Key) throw new Error("Missing GOOGLE_SERVICE_ACCOUNT_KEY_BASE64");
 
-const runtime = new CopilotRuntime({
-  agents: {
-    [AGENT_NAME]: httpAgent,
-  },
-});
+  const jsonKey = JSON.parse(Buffer.from(base64Key, "base64").toString("utf-8"));
 
-const serviceAdapter = new ExperimentalEmptyAdapter();
+  const auth = new GoogleAuth({
+    credentials: jsonKey,
+    scopes: ["https://www.googleapis.com/auth/cloud-platform"],
+  });
+
+  const client = await auth.getClient();
+  const tokenResponse = await client.getAccessToken();
+  return tokenResponse.token;
+}
 
 export const POST = async (req: NextRequest) => {
+  // 1. Generate the token
+  const token = await getGoogleAccessToken();
+
+  // 2. Initialize HttpAgent with Bearer Token in headers
+  const httpAgent = new HttpAgent({
+    url: FINAL_ENDPOINT,
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  // 3. Setup CopilotRuntime
+  const runtime = new CopilotRuntime({
+    agents: {
+      [AGENT_NAME]: httpAgent,
+    },
+  });
+
+  const serviceAdapter = new ExperimentalEmptyAdapter();
+
   const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
     runtime,
     serviceAdapter,
