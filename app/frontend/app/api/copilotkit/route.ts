@@ -71,12 +71,17 @@ async function getGoogleAccessToken() {
 
 /**
  * 3. Custom Vertex AI Agent Implementation
- * We define this as 'any' to bypass the strict internal property check (the 25 missing properties)
- * while maintaining the crucial 'execute' logic for Google Cloud.
+ * We include the .clone() method to satisfy CopilotKit's internal thread management.
  */
 const vertexAgent: any = {
   name: AGENT_NAME,
   description: "Locus Retail Strategy Agent",
+  
+  // MANDATORY: v1.50.1 requires a clone method to handle session isolation
+  clone: function() {
+    return this; 
+  },
+
   execute: async (params: any): Promise<any> => {
     const token = await getGoogleAccessToken();
 
@@ -110,7 +115,6 @@ const vertexAgent: any = {
 // 4. Main Route Handler
 export const POST = async (req: NextRequest) => {
   const runtime = new CopilotRuntime({
-    // Record mapping: satisfies the Record<string, AbstractAgent> requirement
     agents: {
       [AGENT_NAME]: vertexAgent,
     },
