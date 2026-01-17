@@ -38,14 +38,10 @@
 // };
 
 
-import {
-  CopilotRuntime,
-  copilotRuntimeNextJSAppRouterEndpoint,
-} from "@copilotkit/runtime";
+import { CopilotRuntime, copilotRuntimeNextJSAppRouterEndpoint } from "@copilotkit/runtime";
 import { NextRequest } from "next/server";
 import { GoogleAuth } from "google-auth-library";
 
-const AGENT_NAME = "locus";
 const VERTEX_ENDPOINT = process.env.AGENT_ENGINE_ENDPOINT?.replace(":query", "") || "";
 
 async function getGoogleAccessToken() {
@@ -61,82 +57,121 @@ async function getGoogleAccessToken() {
   return tokenResponse.token;
 }
 
-/**
- * Custom service adapter that proxies to Vertex AI with OAuth
- */
-class VertexAIServiceAdapter {
-  async process(input: any): Promise<any> {
-    console.log("🚀 [Vertex Proxy] Processing request");
-    console.log("📊 [Vertex Proxy] Input keys:", Object.keys(input || {}));
-
-    try {
-      const token = await getGoogleAccessToken();
-      console.log("🔑 [Vertex Proxy] OAuth token obtained");
-
-      // Forward the request to Vertex AI exactly as CopilotKit sends it
-      const vertexPayload = {
-        input: input,
-      };
-
-      const endpoint = `${VERTEX_ENDPOINT}:query`;
-      console.log("📤 [Vertex Proxy] Calling:", endpoint);
-      console.log("📤 [Vertex Proxy] Payload:", JSON.stringify(vertexPayload).substring(0, 500));
-
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(vertexPayload),
-      });
-
-      console.log(`📥 [Vertex Proxy] Response status: ${response.status}`);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("❌ [Vertex Proxy] Error:", errorText.substring(0, 500));
-        throw new Error(`Vertex AI error ${response.status}: ${errorText}`);
-      }
-
-      const result = await response.json();
-      console.log("✅ [Vertex Proxy] Success!");
-      console.log("✅ [Vertex Proxy] Response keys:", Object.keys(result));
-      console.log("✅ [Vertex Proxy] Full response:", JSON.stringify(result, null, 2));
-
-      return result;
-
-    } catch (error: any) {
-      console.error("❌ [Vertex Proxy] Exception:", error.message);
-      console.error("❌ [Vertex Proxy] Stack:", error.stack);
-      throw error;
-    }
-  }
-}
-
 export const POST = async (req: NextRequest) => {
-  console.log("=".repeat(80));
-  console.log("📥 [POST] CopilotKit request at", new Date().toISOString());
-  console.log("=".repeat(80));
+  console.log("================================================================================");
+  console.log("📥 [CopilotKit] Request received at", new Date().toISOString());
+  console.log("================================================================================");
 
   try {
-    const serviceAdapter = new VertexAIServiceAdapter();
+    // Parse the incoming CopilotKit request
+    const body = await req.json();
+    console.log("📊 [CopilotKit] Request body keys:", Object.keys(body));
+    console.log("📊 [CopilotKit] Messages:", body.messages?.length || 0);
 
-    const runtime = new CopilotRuntime();
+    const token = await getGoogleAccessToken();
+    console.log("🔑 [Auth] OAuth token obtained");
 
-    const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
-      runtime,
-      serviceAdapter: serviceAdapter as any,
-      endpoint: "/api/copilotkit",
+    // Extract the latest user message
+    const messages = body.messages || [];
+    const lastMessage = messages[messages.length - 1];
+    const userInput = lastMessage?.content || "";
+
+    console.log("💬 [Input] User message:", userInput);
+
+    // Call Vertex AI Agent Engine with the correct format
+    const vertexPayload = {
+      input: {
+        text: userInput,
+        // If your agent expects state, add it here:
+        // state: body.state || {},
+      },
+    };
+
+    const endpoint = `${VERTEX_ENDPOINT}:query`;
+    console.log("📤 [Vertex] Calling:", endpoint);
+    console.log("📤 [Vertex] Payload:", JSON.stringify(vertexPayload));
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(vertexPayload),
     });
 
-    const response = await handleRequest(req);
-    console.log("✅ [POST] Response ready");
-    return response;
+    console.log(`📥 [Vertex] Response status: ${response.status}`);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("❌ [Vertex] Error:", errorText);
+      
+      return new Response(
+        JSON.stringify({
+          messages: [
+            ...messages,
+            {
+              role: "assistant",
+              content: `I encountered an error: ${response.status} - ${errorText.substring(0, 200)}`,
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const result = await response.json();
+    console.log("✅ [Vertex] Success!");
+    console.log("✅ [Vertex] Response keys:", Object.keys(result));
+    console.log("✅ [Vertex] Full response:", JSON.stringify(result, null, 2));
+
+    // Extract the response content from Vertex AI's format
+    let assistantMessage = "";
+    let agentState = {};
+
+    // Vertex AI Agent Engine returns different structures - adapt based on what you see in logs
+    if (result.output) {
+      assistantMessage = typeof result.output === "string" ? result.output : JSON.stringify(result.output);
+    } else if (result.response) {
+      assistantMessage = result.response;
+    } else if (result.content) {
+      assistantMessage = result.content;
+    } else {
+      assistantMessage = JSON.stringify(result);
+    }
+
+    // Extract state if present
+    if (result.state) {
+      agentState = result.state;
+    }
+
+    console.log("📝 [Response] Assistant message length:", assistantMessage.length);
+    console.log("📝 [Response] State:", agentState);
+
+    // Return in CopilotKit format
+    return new Response(
+      JSON.stringify({
+        messages: [
+          ...messages,
+          {
+            role: "assistant",
+            content: assistantMessage,
+          },
+        ],
+        state: agentState,
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
 
   } catch (error: any) {
-    console.error("❌ [POST] Fatal error:", error.message);
-    console.error("❌ [POST] Stack:", error.stack);
+    console.error("❌ [Error] Fatal error:", error.message);
+    console.error("❌ [Error] Stack:", error.stack);
     
     return new Response(
       JSON.stringify({ error: error.message }),
