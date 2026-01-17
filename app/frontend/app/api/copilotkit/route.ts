@@ -88,7 +88,7 @@ export const POST = async (req: NextRequest) => {
     const token = await getGoogleAccessToken();
     console.log("🔑 [Auth] Token obtained");
 
-    let sessionId = sessionCache.get(threadId);
+    let sessionId: string = sessionCache.get(threadId) || "";
     
     if (!sessionId) {
       console.log("🆕 [Session] Creating new session for thread:", threadId);
@@ -113,14 +113,13 @@ export const POST = async (req: NextRequest) => {
       }
 
       const sessionData = await createSessionResponse.json();
-      const newSessionId = sessionData.name || sessionData.session_id;
+      sessionId = sessionData.name || sessionData.session_id || "";
       
-      if (!newSessionId) {
+      if (!sessionId) {
         console.error("❌ [Session] No session ID in response:", sessionData);
         throw new Error("Failed to extract session ID from response");
       }
       
-      sessionId = newSessionId;
       sessionCache.set(threadId, sessionId);
       console.log("✅ [Session] Created:", sessionId);
     } else {
@@ -163,7 +162,7 @@ export const POST = async (req: NextRequest) => {
     }
 
     const result = await queryResponse.json();
-    console.log("✅ [Agent] Response:", JSON.stringify(result, null, 2));
+    console.log("✅ [Agent] Full Response:", JSON.stringify(result, null, 2));
 
     let assistantContent = "";
     let agentState = {};
