@@ -41,7 +41,6 @@
 import { NextRequest } from "next/server";
 import { GoogleAuth } from "google-auth-library";
 
-// Remove :query suffix - Agent Engine uses different endpoints
 const AGENT_ENGINE_BASE = process.env.AGENT_ENGINE_ENDPOINT?.replace(":query", "") || "";
 
 async function getGoogleAccessToken() {
@@ -57,7 +56,6 @@ async function getGoogleAccessToken() {
   return tokenResponse.token;
 }
 
-// Session cache (in production, use Redis or similar)
 const sessionCache = new Map<string, string>();
 
 export const POST = async (req: NextRequest) => {
@@ -69,12 +67,10 @@ export const POST = async (req: NextRequest) => {
     const rawBody = await req.json();
     console.log("📦 [Raw Request]:", JSON.stringify(rawBody, null, 2));
 
-    // Extract from nested CopilotKit format
     const actualBody = rawBody.body || rawBody;
     const messages = actualBody.messages || [];
     const threadId = actualBody.threadId || `thread_${Date.now()}`;
 
-    // Get the latest user message
     const userMessages = messages.filter((m: any) => m.role === "user");
     const lastUserMessage = userMessages[userMessages.length - 1];
     const userInput = lastUserMessage?.content || "";
@@ -84,9 +80,7 @@ export const POST = async (req: NextRequest) => {
 
     if (!userInput) {
       return new Response(
-        JSON.stringify({
-          messages: messages,
-        }),
+        JSON.stringify({ messages: messages }),
         { status: 200, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -94,7 +88,6 @@ export const POST = async (req: NextRequest) => {
     const token = await getGoogleAccessToken();
     console.log("🔑 [Auth] Token obtained");
 
-    // Get or create session for this thread
     let sessionId = sessionCache.get(threadId);
     
     if (!sessionId) {
@@ -120,14 +113,20 @@ export const POST = async (req: NextRequest) => {
       }
 
       const sessionData = await createSessionResponse.json();
-      sessionId = sessionData.name || sessionData.session_id;
+      const newSessionId = sessionData.name || sessionData.session_id;
+      
+      if (!newSessionId) {
+        console.error("❌ [Session] No session ID in response:", sessionData);
+        throw new Error("Failed to extract session ID from response");
+      }
+      
+      sessionId = newSessionId;
       sessionCache.set(threadId, sessionId);
       console.log("✅ [Session] Created:", sessionId);
     } else {
       console.log("♻️ [Session] Reusing existing:", sessionId);
     }
 
-    // Send message to the agent via the session
     console.log("📤 [Agent] Sending message to session");
     
     const queryPayload = {
@@ -166,11 +165,9 @@ export const POST = async (req: NextRequest) => {
     const result = await queryResponse.json();
     console.log("✅ [Agent] Response:", JSON.stringify(result, null, 2));
 
-    // Extract the agent's response
     let assistantContent = "";
     let agentState = {};
 
-    // ADK Agent Engine returns different formats - adapt based on response
     if (result.response) {
       assistantContent = result.response;
     } else if (result.output) {
@@ -183,7 +180,6 @@ export const POST = async (req: NextRequest) => {
       assistantContent = JSON.stringify(result);
     }
 
-    // Extract state if available
     if (result.state) {
       agentState = result.state;
     } else if (result.session_state) {
