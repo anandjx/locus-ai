@@ -38,11 +38,11 @@
 // };
 
 
-import { CopilotRuntime, copilotRuntimeNextJSAppRouterEndpoint } from "@copilotkit/runtime";
 import { NextRequest } from "next/server";
 import { GoogleAuth } from "google-auth-library";
 
-const VERTEX_ENDPOINT = process.env.AGENT_ENGINE_ENDPOINT?.replace(":query", "") || "";
+// Remove :query suffix - Agent Engine uses different endpoints
+const AGENT_ENGINE_BASE = process.env.AGENT_ENGINE_ENDPOINT?.replace(":query", "") || "";
 
 async function getGoogleAccessToken() {
   const base64Key = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64;
@@ -57,54 +57,97 @@ async function getGoogleAccessToken() {
   return tokenResponse.token;
 }
 
+// Session cache (in production, use Redis or similar)
+const sessionCache = new Map<string, string>();
+
 export const POST = async (req: NextRequest) => {
-  console.log("================================================================================");
-  console.log("📥 [CopilotKit] Request received at", new Date().toISOString());
-  console.log("================================================================================");
+  console.log("=".repeat(80));
+  console.log("📥 [POST] Request at", new Date().toISOString());
+  console.log("=".repeat(80));
 
   try {
-    // Parse the incoming CopilotKit request
-    const body = await req.json();
-    console.log("📊 [CopilotKit] Request body keys:", Object.keys(body));
-    console.log("📊 [CopilotKit] Messages:", body.messages?.length || 0);
+    const rawBody = await req.json();
+    console.log("📦 [Raw Request]:", JSON.stringify(rawBody, null, 2));
+
+    // Extract from nested CopilotKit format
+    const actualBody = rawBody.body || rawBody;
+    const messages = actualBody.messages || [];
+    const threadId = actualBody.threadId || `thread_${Date.now()}`;
+
+    // Get the latest user message
+    const userMessages = messages.filter((m: any) => m.role === "user");
+    const lastUserMessage = userMessages[userMessages.length - 1];
+    const userInput = lastUserMessage?.content || "";
+
+    console.log("💬 [Input]:", userInput);
+    console.log("🔗 [ThreadID]:", threadId);
+
+    if (!userInput) {
+      return new Response(
+        JSON.stringify({
+          messages: messages,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
 
     const token = await getGoogleAccessToken();
-    console.log("🔑 [Auth] OAuth token obtained");
+    console.log("🔑 [Auth] Token obtained");
 
-    // Extract the latest user message
-    const messages = body.messages || [];
-    const lastMessage = messages[messages.length - 1];
-    const userInput = lastMessage?.content || "";
+    // Get or create session for this thread
+    let sessionId = sessionCache.get(threadId);
+    
+    if (!sessionId) {
+      console.log("🆕 [Session] Creating new session for thread:", threadId);
+      
+      const createSessionResponse = await fetch(`${AGENT_ENGINE_BASE}:createSession`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          session: {
+            user_id: threadId,
+          }
+        }),
+      });
 
-    console.log("💬 [Input] User message:", userInput);
+      if (!createSessionResponse.ok) {
+        const errorText = await createSessionResponse.text();
+        console.error("❌ [Session] Create failed:", errorText);
+        throw new Error(`Session creation failed: ${errorText}`);
+      }
 
-    // Call Vertex AI Agent Engine with the correct format
-    const vertexPayload = {
-      input: {
-        text: userInput,
-        // If your agent expects state, add it here:
-        // state: body.state || {},
-      },
+      const sessionData = await createSessionResponse.json();
+      sessionId = sessionData.name || sessionData.session_id;
+      sessionCache.set(threadId, sessionId);
+      console.log("✅ [Session] Created:", sessionId);
+    } else {
+      console.log("♻️ [Session] Reusing existing:", sessionId);
+    }
+
+    // Send message to the agent via the session
+    console.log("📤 [Agent] Sending message to session");
+    
+    const queryPayload = {
+      query: userInput,
     };
 
-    const endpoint = `${VERTEX_ENDPOINT}:query`;
-    console.log("📤 [Vertex] Calling:", endpoint);
-    console.log("📤 [Vertex] Payload:", JSON.stringify(vertexPayload));
-
-    const response = await fetch(endpoint, {
+    const queryResponse = await fetch(`${AGENT_ENGINE_BASE}/sessions/${sessionId}:query`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(vertexPayload),
+      body: JSON.stringify(queryPayload),
     });
 
-    console.log(`📥 [Vertex] Response status: ${response.status}`);
+    console.log(`📥 [Agent] Response status: ${queryResponse.status}`);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("❌ [Vertex] Error:", errorText);
+    if (!queryResponse.ok) {
+      const errorText = await queryResponse.text();
+      console.error("❌ [Agent] Query failed:", errorText);
       
       return new Response(
         JSON.stringify({
@@ -112,70 +155,68 @@ export const POST = async (req: NextRequest) => {
             ...messages,
             {
               role: "assistant",
-              content: `I encountered an error: ${response.status} - ${errorText.substring(0, 200)}`,
-            },
+              content: `I encountered an error: ${errorText.substring(0, 300)}`,
+            }
           ],
         }),
-        {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }
+        { status: 200, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    const result = await response.json();
-    console.log("✅ [Vertex] Success!");
-    console.log("✅ [Vertex] Response keys:", Object.keys(result));
-    console.log("✅ [Vertex] Full response:", JSON.stringify(result, null, 2));
+    const result = await queryResponse.json();
+    console.log("✅ [Agent] Response:", JSON.stringify(result, null, 2));
 
-    // Extract the response content from Vertex AI's format
-    let assistantMessage = "";
+    // Extract the agent's response
+    let assistantContent = "";
     let agentState = {};
 
-    // Vertex AI Agent Engine returns different structures - adapt based on what you see in logs
-    if (result.output) {
-      assistantMessage = typeof result.output === "string" ? result.output : JSON.stringify(result.output);
-    } else if (result.response) {
-      assistantMessage = result.response;
-    } else if (result.content) {
-      assistantMessage = result.content;
+    // ADK Agent Engine returns different formats - adapt based on response
+    if (result.response) {
+      assistantContent = result.response;
+    } else if (result.output) {
+      assistantContent = typeof result.output === "string" ? result.output : JSON.stringify(result.output);
+    } else if (result.message) {
+      assistantContent = result.message;
+    } else if (result.text) {
+      assistantContent = result.text;
     } else {
-      assistantMessage = JSON.stringify(result);
+      assistantContent = JSON.stringify(result);
     }
 
-    // Extract state if present
+    // Extract state if available
     if (result.state) {
       agentState = result.state;
+    } else if (result.session_state) {
+      agentState = result.session_state;
     }
 
-    console.log("📝 [Response] Assistant message length:", assistantMessage.length);
-    console.log("📝 [Response] State:", agentState);
+    console.log("📝 [Response] Content length:", assistantContent.length);
+    console.log("📝 [Response] State keys:", Object.keys(agentState));
 
-    // Return in CopilotKit format
     return new Response(
       JSON.stringify({
         messages: [
           ...messages,
           {
             role: "assistant",
-            content: assistantMessage,
-          },
+            content: assistantContent,
+          }
         ],
         state: agentState,
       }),
-      {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }
+      { status: 200, headers: { "Content-Type": "application/json" } }
     );
 
   } catch (error: any) {
-    console.error("❌ [Error] Fatal error:", error.message);
-    console.error("❌ [Error] Stack:", error.stack);
+    console.error("❌ [Fatal]:", error.message);
+    console.error("❌ [Stack]:", error.stack);
     
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      JSON.stringify({
+        role: "assistant",
+        content: `System error: ${error.message}`,
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
     );
   }
 };

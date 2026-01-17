@@ -1,3 +1,5 @@
+# app/agent.py
+
 """Locus Agent - Root Agent Definition.
 
 This module defines the root agent for the Location Strategy Pipeline.
