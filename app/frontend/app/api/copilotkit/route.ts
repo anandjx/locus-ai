@@ -56,7 +56,6 @@ async function getGoogleAccessToken() {
   return tokenResponse.token;
 }
 
-// Session management
 const sessionCache = new Map<string, string>();
 
 export const POST = async (req: NextRequest) => {
@@ -65,14 +64,15 @@ export const POST = async (req: NextRequest) => {
   console.log("=".repeat(80));
 
   try {
-    const body = await req.json();
-    console.log("📦 [Request Body]:", JSON.stringify(body, null, 2));
+    const requestBody = await req.json();
+    console.log("📦 [Request Body]:", JSON.stringify(requestBody, null, 2));
 
-    const method = body.method;
-    const params = body.params || {};
+    const method = requestBody.method;
+    const params = requestBody.params || {};
+    const body = requestBody.body || {};
 
-    // Handle AG-UI protocol methods
-    if (method === "agent.connect") {
+    // Handle agent/connect (with slash)
+    if (method === "agent/connect") {
       console.log("🔌 [AG-UI] Connect request");
       return new Response(
         JSON.stringify({
@@ -85,23 +85,31 @@ export const POST = async (req: NextRequest) => {
       );
     }
 
-    if (method === "agent.run") {
+    // Handle agent/run
+    if (method === "agent/run") {
       console.log("🚀 [AG-UI] Run request");
       
-      const threadId = params.threadId || `thread_${Date.now()}`;
-      const input = params.input || params.messages?.[params.messages.length - 1]?.content || "";
+      const threadId = body.threadId || params.threadId || `thread_${Date.now()}`;
+      const messages = body.messages || [];
+      
+      // Extract user input from messages
+      const userMessages = messages.filter((m: any) => m.role === "user");
+      const lastUserMessage = userMessages[userMessages.length - 1];
+      const userInput = lastUserMessage?.content || "";
 
       console.log("🔗 [ThreadID]:", threadId);
-      console.log("💬 [Input]:", input);
+      console.log("💬 [Input]:", userInput);
+      console.log("📨 [Messages count]:", messages.length);
 
-      if (!input) {
+      if (!userInput) {
+        console.log("⚠️ No user input - sending welcome");
         return new Response(
           JSON.stringify({
             result: {
               events: [
                 {
                   type: "TEXT_MESSAGE_CONTENT",
-                  delta: "Please send a message to get started.",
+                  delta: "👋 Welcome to LOCUS! I'm your AI-powered retail location intelligence assistant. Tell me about your business idea and target location to get started.",
                 }
               ]
             }
@@ -130,28 +138,44 @@ export const POST = async (req: NextRequest) => {
           }),
         });
 
+        const createRespText = await createResp.text();
+        console.log(`📥 [Session] Create response (${createResp.status}):`, createRespText);
+
         if (!createResp.ok) {
-          const errorText = await createResp.text();
-          console.error("❌ [Session] Create failed:", errorText);
+          console.error("❌ [Session] Create failed");
           
           return new Response(
             JSON.stringify({
-              error: { message: `Session creation failed: ${errorText}` }
+              result: {
+                events: [
+                  {
+                    type: "TEXT_MESSAGE_CONTENT",
+                    delta: `Failed to initialize session: ${createRespText.substring(0, 200)}`,
+                  }
+                ]
+              }
             }),
-            { status: 500, headers: { "Content-Type": "application/json" } }
+            { status: 200, headers: { "Content-Type": "application/json" } }
           );
         }
 
-        const sessionData = await createResp.json();
+        const sessionData = JSON.parse(createRespText);
         sessionId = sessionData.name || sessionData.session_id || "";
         
         if (!sessionId) {
-          console.error("❌ [Session] No ID returned");
+          console.error("❌ [Session] No ID in response");
           return new Response(
             JSON.stringify({
-              error: { message: "Failed to create session" }
+              result: {
+                events: [
+                  {
+                    type: "TEXT_MESSAGE_CONTENT",
+                    delta: "Failed to create session - no ID returned",
+                  }
+                ]
+              }
             }),
-            { status: 500, headers: { "Content-Type": "application/json" } }
+            { status: 200, headers: { "Content-Type": "application/json" } }
           );
         }
         
@@ -162,7 +186,7 @@ export const POST = async (req: NextRequest) => {
       }
 
       // Query the agent
-      console.log("📤 [Agent] Querying...");
+      console.log("📤 [Agent] Querying with input:", userInput.substring(0, 100));
       
       const queryResp = await fetch(`${AGENT_ENGINE_BASE}/sessions/${sessionId}:query`, {
         method: "POST",
@@ -170,14 +194,14 @@ export const POST = async (req: NextRequest) => {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ query: input }),
+        body: JSON.stringify({ query: userInput }),
       });
 
-      console.log(`📥 [Agent] Status: ${queryResp.status}`);
+      const queryRespText = await queryResp.text();
+      console.log(`📥 [Agent] Query response (${queryResp.status}):`, queryRespText.substring(0, 500));
 
       if (!queryResp.ok) {
-        const errorText = await queryResp.text();
-        console.error("❌ [Agent] Query failed:", errorText);
+        console.error("❌ [Agent] Query failed");
         
         return new Response(
           JSON.stringify({
@@ -185,7 +209,7 @@ export const POST = async (req: NextRequest) => {
               events: [
                 {
                   type: "TEXT_MESSAGE_CONTENT",
-                  delta: `Error: ${errorText.substring(0, 300)}`,
+                  delta: `Agent error: ${queryRespText.substring(0, 300)}`,
                 }
               ]
             }
@@ -194,13 +218,17 @@ export const POST = async (req: NextRequest) => {
         );
       }
 
-      const result = await queryResp.json();
-      console.log("✅ [Agent] Response:", JSON.stringify(result, null, 2));
+      const result = JSON.parse(queryRespText);
+      console.log("✅ [Agent] Parsed response:", JSON.stringify(result, null, 2).substring(0, 1000));
 
-      // Transform to AG-UI events
+      // Extract content from response
       const content = result.response || result.output || result.message || result.text || JSON.stringify(result);
       const state = result.state || result.session_state || {};
 
+      console.log("📝 [Response] Content:", content.substring(0, 200));
+      console.log("📝 [Response] State keys:", Object.keys(state));
+
+      // Return AG-UI formatted events
       const events = [
         {
           type: "RUN_STARTED",
@@ -218,9 +246,7 @@ export const POST = async (req: NextRequest) => {
       ];
 
       return new Response(
-        JSON.stringify({
-          result: { events }
-        }),
+        JSON.stringify({ result: { events } }),
         { status: 200, headers: { "Content-Type": "application/json" } }
       );
     }
