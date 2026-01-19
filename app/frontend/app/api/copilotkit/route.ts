@@ -38,252 +38,115 @@
 // };
 
 
-import { NextRequest } from "next/server";
-import { GoogleAuth } from "google-auth-library";
+import { NextRequest } from 'next/server';
+import {
+  CopilotRuntime,
+  CopilotServiceAdapter,
+  CopilotRuntimeChatCompletionRequest,
+  CopilotRuntimeChatCompletionResponse,
+  copilotRuntimeNextJSAppRouterEndpoint,
+} from '@copilotkit/runtime';
+import { GoogleAuth } from 'google-auth-library';
 
-const AGENT_ENGINE_BASE = process.env.AGENT_ENGINE_ENDPOINT?.replace(":query", "") || "";
-
-async function getGoogleAccessToken() {
-  const base64Key = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64;
-  if (!base64Key) throw new Error("Missing GOOGLE_SERVICE_ACCOUNT_KEY_BASE64");
-  const jsonKey = JSON.parse(Buffer.from(base64Key, "base64").toString("utf-8"));
-  const auth = new GoogleAuth({
-    credentials: jsonKey,
-    scopes: ["https://www.googleapis.com/auth/cloud-platform"],
+// 1. Setup Google Auth Client
+// We decodes the base64 key to avoid file system issues in Vercel Serverless
+const getGoogleAuthClient = () => {
+  if (!process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64) {
+    throw new Error('Missing GOOGLE_SERVICE_ACCOUNT_KEY_BASE64');
+  }
+  const credentials = JSON.parse(
+    Buffer.from(process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64, 'base64').toString('utf-8')
+  );
+  return new GoogleAuth({
+    credentials,
+    scopes: ['https://www.googleapis.com/auth/cloud-platform'],
   });
-  const client = await auth.getClient();
-  const tokenResponse = await client.getAccessToken();
-  return tokenResponse.token;
+};
+
+// 2. Define the Custom Adapter for Vertex AI Agent Engine
+class VertexReasoningEngineAdapter implements CopilotServiceAdapter {
+  private endpoint: string;
+
+  constructor(endpoint: string) {
+    this.endpoint = endpoint;
+  }
+
+  async process(
+    request: CopilotRuntimeChatCompletionRequest
+  ): Promise<CopilotRuntimeChatCompletionResponse> {
+    const { messages, threadId } = request;
+    
+    // Extract the latest user message
+    const lastMessage = messages[messages.length - 1];
+    const userBuffer = lastMessage.content;
+
+    // Get OAuth Token
+    const auth = getGoogleAuthClient();
+    const client = await auth.getClient();
+    const accessToken = await client.getAccessToken();
+
+    if (!accessToken.token) {
+      throw new Error('Failed to generate Google Access Token');
+    }
+
+    // 3. Call Vertex AI Agent Engine (REST API)
+    // Structure matches the standard AdkApp :query interface
+    const response = await fetch(this.endpoint, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        input: {
+          text: userBuffer
+          // Pass threadId here if your Python agent supports session handling
+          // session_id: threadId 
+        }
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Vertex API Error:', response.status, errorText);
+      throw new Error(`Vertex Agent Engine error: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+
+    // 4. Translate Vertex Response -> CopilotKit Response
+    // Agent Engine typically returns { output: "..." } or { text: "..." }
+    // We strictly typecheck or fallback to stringifying the data
+    const agentText = data.output || data.text || JSON.stringify(data);
+
+    return {
+      threadId,
+      // We wrap the result in a generated message
+      generatedOutputs: [
+        {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: agentText,
+        },
+      ],
+    };
+  }
 }
 
-// Session cache to map threadIds to Vertex AI session IDs
-const sessionCache = new Map<string, string>();
+// 5. Initialize Runtime with the Adapter
+const serviceAdapter = new VertexReasoningEngineAdapter(
+  process.env.AGENT_ENGINE_ENDPOINT || ''
+);
 
+const runtime = new CopilotRuntime();
+
+// 6. Export the Handler
 export const POST = async (req: NextRequest) => {
-  console.log("=".repeat(80));
-  console.log("📥 [AG-UI Proxy] Request at", new Date().toISOString());
-  console.log("=".repeat(80));
+  const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
+    runtime,
+    serviceAdapter,
+    endpoint: '/api/copilotkit',
+  });
 
-  try {
-    const body = await req.json();
-    console.log("📦 [Request]:", JSON.stringify(body, null, 2));
-
-    const method = body.method;
-    const params = body.params || {};
-    const requestBody = body.body || {};
-
-    // Handle AG-UI Protocol Methods
-    
-    // Method 1: agent/connect - Connection handshake
-    if (method === "agent/connect" || method === "agent.connect") {
-      console.log("🔌 [AG-UI] Connect request");
-      return new Response(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          id: body.id || 1,
-          result: {
-            agentId: "locus",
-            capabilities: {
-              streaming: true,
-              tools: true,
-              state: true,
-            }
-          }
-        }),
-        { 
-          status: 200, 
-          headers: { "Content-Type": "application/json" } 
-        }
-      );
-    }
-
-    // Method 2: agent/run - Execute agent with user input
-    if (method === "agent/run" || method === "agent.run") {
-      console.log("🚀 [AG-UI] Run request");
-      
-      const threadId = requestBody.threadId || params.threadId || `thread_${Date.now()}`;
-      const messages = requestBody.messages || params.messages || [];
-      const state = requestBody.state || params.state || {};
-      
-      // Extract the latest user message
-      const userMessages = messages.filter((m: any) => m.role === "user");
-      const lastUserMessage = userMessages[userMessages.length - 1];
-      const userInput = lastUserMessage?.content || "";
-
-      console.log("🔗 [ThreadID]:", threadId);
-      console.log("💬 [User Input]:", userInput);
-
-      if (!userInput) {
-        console.warn("⚠️ No user input found");
-        return new Response(
-          JSON.stringify({
-            jsonrpc: "2.0",
-            id: body.id || 1,
-            result: {
-              output: "Please send a message to start the analysis.",
-              state: {}
-            }
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        );
-      }
-
-      const token = await getGoogleAccessToken();
-      console.log("🔑 [Auth] Token obtained");
-
-      // Get or create Vertex AI session
-      let sessionId: string = sessionCache.get(threadId) || "";
-      
-      if (!sessionId) {
-        console.log("🆕 [Session] Creating new Vertex AI session");
-        
-        const createSessionResp = await fetch(`${AGENT_ENGINE_BASE}:createSession`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            session: {
-              user_id: threadId,
-            }
-          }),
-        });
-
-        if (!createSessionResp.ok) {
-          const errorText = await createSessionResp.text();
-          console.error("❌ [Session] Create failed:", errorText);
-          
-          return new Response(
-            JSON.stringify({
-              jsonrpc: "2.0",
-              id: body.id || 1,
-              error: {
-                code: -32000,
-                message: `Session creation failed: ${errorText}`
-              }
-            }),
-            { status: 200, headers: { "Content-Type": "application/json" } }
-          );
-        }
-
-        const sessionData = await createSessionResp.json();
-        sessionId = sessionData.name || sessionData.session_id || "";
-        
-        if (!sessionId) {
-          console.error("❌ [Session] No session ID returned:", sessionData);
-          return new Response(
-            JSON.stringify({
-              jsonrpc: "2.0",
-              id: body.id || 1,
-              error: {
-                code: -32001,
-                message: "Failed to extract session ID from Vertex AI response"
-              }
-            }),
-            { status: 200, headers: { "Content-Type": "application/json" } }
-          );
-        }
-        
-        sessionCache.set(threadId, sessionId);
-        console.log("✅ [Session] Created:", sessionId);
-      } else {
-        console.log("♻️ [Session] Reusing existing:", sessionId);
-      }
-
-      // Query the Vertex AI Agent Engine
-      console.log("📤 [Vertex AI] Sending query");
-      
-      const queryResp = await fetch(`${AGENT_ENGINE_BASE}/sessions/${sessionId}:query`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          query: userInput,
-        }),
-      });
-
-      console.log(`📥 [Vertex AI] Response status: ${queryResp.status}`);
-
-      if (!queryResp.ok) {
-        const errorText = await queryResp.text();
-        console.error("❌ [Vertex AI] Query failed:", errorText);
-        
-        return new Response(
-          JSON.stringify({
-            jsonrpc: "2.0",
-            id: body.id || 1,
-            error: {
-              code: -32002,
-              message: `Vertex AI query failed: ${errorText.substring(0, 300)}`
-            }
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        );
-      }
-
-      const result = await queryResp.json();
-      console.log("✅ [Vertex AI] Full Response:", JSON.stringify(result, null, 2));
-
-      // Extract response content
-      const assistantContent = result.response || 
-                               result.output || 
-                               result.message || 
-                               result.text || 
-                               JSON.stringify(result);
-      
-      const agentState = result.state || 
-                        result.session_state || 
-                        result.agent_state || 
-                        {};
-
-      console.log("📝 [Response] Content length:", assistantContent.length);
-      console.log("📝 [Response] State keys:", Object.keys(agentState));
-
-      // Return in AG-UI format
-      return new Response(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          id: body.id || 1,
-          result: {
-            output: assistantContent,
-            state: agentState,
-          }
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    // Unknown method
-    console.warn("⚠️ [Unknown Method]:", method);
-    return new Response(
-      JSON.stringify({
-        jsonrpc: "2.0",
-        id: body.id || 1,
-        error: {
-          code: -32601,
-          message: `Method not found: ${method}`
-        }
-      }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
-    );
-
-  } catch (error: any) {
-    console.error("❌ [Fatal Error]:", error.message);
-    console.error("❌ [Stack]:", error.stack);
-    
-    return new Response(
-      JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        error: {
-          code: -32603,
-          message: `Internal error: ${error.message}`
-        }
-      }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
-  }
+  return handleRequest(req);
 };
