@@ -75,9 +75,8 @@ const getGoogleAuthClient = () => {
 class VertexStreamingAdapter implements CopilotServiceAdapter {
   private endpoint: string;
 
-  // WE DO NOT DEFINE 'provider' or 'model' here.
-  // Defining them triggers the Vercel AI SDK to hijack the request.
-  // We will disable observability validation in the Runtime setup instead.
+  // We define a name, but avoid 'provider'/'model' to prevent SDK hijacking.
+  // The 'observability_c' config below stops the runtime from complaining.
   public name = "vertex-custom-adapter";
 
   constructor(endpoint: string) {
@@ -106,7 +105,6 @@ class VertexStreamingAdapter implements CopilotServiceAdapter {
       },
       body: JSON.stringify({
         input: { text: userBuffer }
-        // session_id: threadId // Enable if your agent supports sessions
       }),
     });
 
@@ -119,11 +117,9 @@ class VertexStreamingAdapter implements CopilotServiceAdapter {
     const data = await response.json();
     
     // C. Parse Response
-    // Agent Engine usually returns { output: "..." } or { text: "..." }
     const agentText = data.output || data.text || JSON.stringify(data);
 
     // D. Stream the Response Manually
-    // This bypasses strict return types and Vercel AI SDK auto-handling
     await eventSource.stream(async (eventStream) => {
       const responseId = crypto.randomUUID();
 
@@ -142,7 +138,6 @@ class VertexStreamingAdapter implements CopilotServiceAdapter {
     });
 
     // E. Return Metadata Only
-    // Satisfies the interface without trying to return invalid 'messages' objects
     return {
       threadId: threadId || crypto.randomUUID(),
     };
@@ -156,12 +151,19 @@ const serviceAdapter = new VertexStreamingAdapter(
   process.env.AGENT_ENGINE_ENDPOINT || ''
 );
 
-// CRITICAL FIX: Disable Observability
-// This stops the Runtime from checking for "known providers" (openai/google/anthropic).
-// It prevents the "Unknown provider 'undefined'" crash.
+// CRITICAL FIX: Satisfy Strict TypeScript Observability Config
 const runtimeInstance = new CopilotRuntime({
   observability_c: {
     enabled: false,
+    
+    // We must provide these dummy values because the interface is strict,
+    // even though enabled is false.
+    progressive: false,
+    hooks: {
+        handleRequest: async () => {},
+        handleResponse: async () => {},
+        handleError: async () => {},
+    }
   },
 });
 
