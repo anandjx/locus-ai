@@ -38,6 +38,7 @@
 // };
 
 
+
 import { NextRequest } from 'next/server';
 import {
   CopilotRuntime,
@@ -49,17 +50,11 @@ import {
 import { GoogleAuth } from 'google-auth-library';
 import crypto from 'crypto';
 
-// 1. RUNTIME CONFIG
+// 1. Force Node.js Runtime (Required for GoogleAuth)
 export const runtime = 'nodejs';
 
-// 2. CRITICAL FIX: Bypass Vercel AI SDK Validation
-// The SDK sees provider="google" and demands this key. 
-// We provide a dummy value to satisfy the check. 
-// Our actual code ignores this and uses the Service Account below.
-process.env.GOOGLE_GENERATIVE_AI_API_KEY = "dummy-key-to-bypass-sdk-validation";
-
 /* ============================================================
-   3. Google Auth Setup (The REAL Authentication)
+   2. Google Auth Setup
    ============================================================ */
 const getGoogleAuthClient = () => {
   if (!process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64) {
@@ -75,15 +70,15 @@ const getGoogleAuthClient = () => {
 };
 
 /* ============================================================
-   4. Custom Adapter
+   3. Custom Adapter Implementation
    ============================================================ */
 class VertexStreamingAdapter implements CopilotServiceAdapter {
   private endpoint: string;
 
-  // We must define these to satisfy CopilotKit v1.50+ validation
-  public name = "vertex-adapter";
-  public provider = "google"; // This triggers the check we just bypassed
-  public model = "agent-engine";
+  // WE DO NOT DEFINE 'provider' or 'model' here.
+  // Defining them triggers the Vercel AI SDK to hijack the request.
+  // We will disable observability validation in the Runtime setup instead.
+  public name = "vertex-custom-adapter";
 
   constructor(endpoint: string) {
     this.endpoint = endpoint;
@@ -96,11 +91,9 @@ class VertexStreamingAdapter implements CopilotServiceAdapter {
 
     // A. Extract User Input
     const lastMessage = messages[messages.length - 1];
-    // Safe cast to handle strict message types
     const userBuffer = (lastMessage as any).content || "";
 
-    // B. Call Vertex AI
-    // We use the Service Account (OAuth2) here, NOT the API key
+    // B. Call Vertex AI Agent Engine
     const auth = getGoogleAuthClient();
     const client = await auth.getClient();
     const accessToken = await client.getAccessToken();
@@ -113,6 +106,7 @@ class VertexStreamingAdapter implements CopilotServiceAdapter {
       },
       body: JSON.stringify({
         input: { text: userBuffer }
+        // session_id: threadId // Enable if your agent supports sessions
       }),
     });
 
@@ -123,9 +117,13 @@ class VertexStreamingAdapter implements CopilotServiceAdapter {
     }
 
     const data = await response.json();
+    
+    // C. Parse Response
+    // Agent Engine usually returns { output: "..." } or { text: "..." }
     const agentText = data.output || data.text || JSON.stringify(data);
 
-    // C. STREAM THE RESPONSE
+    // D. Stream the Response Manually
+    // This bypasses strict return types and Vercel AI SDK auto-handling
     await eventSource.stream(async (eventStream) => {
       const responseId = crypto.randomUUID();
 
@@ -143,7 +141,8 @@ class VertexStreamingAdapter implements CopilotServiceAdapter {
       });
     });
 
-    // D. Return Metadata Only
+    // E. Return Metadata Only
+    // Satisfies the interface without trying to return invalid 'messages' objects
     return {
       threadId: threadId || crypto.randomUUID(),
     };
@@ -151,14 +150,24 @@ class VertexStreamingAdapter implements CopilotServiceAdapter {
 }
 
 /* ============================================================
-   5. Initialize & Export
+   4. Runtime Initialization
    ============================================================ */
 const serviceAdapter = new VertexStreamingAdapter(
   process.env.AGENT_ENGINE_ENDPOINT || ''
 );
 
-const runtimeInstance = new CopilotRuntime();
+// CRITICAL FIX: Disable Observability
+// This stops the Runtime from checking for "known providers" (openai/google/anthropic).
+// It prevents the "Unknown provider 'undefined'" crash.
+const runtimeInstance = new CopilotRuntime({
+  observability_c: {
+    enabled: false,
+  },
+});
 
+/* ============================================================
+   5. Export Handler
+   ============================================================ */
 export const POST = async (req: NextRequest) => {
   const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
     runtime: runtimeInstance,
