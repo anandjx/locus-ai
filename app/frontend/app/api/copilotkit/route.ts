@@ -42,19 +42,23 @@
 import { NextRequest } from 'next/server';
 import {
   CopilotRuntime,
-  CopilotServiceAdapter,
-  CopilotRuntimeChatCompletionRequest,
-  CopilotRuntimeChatCompletionResponse,
+  LangChainAdapter,
   copilotRuntimeNextJSAppRouterEndpoint,
 } from '@copilotkit/runtime';
 import { GoogleAuth } from 'google-auth-library';
-import crypto from 'crypto';
 
-// 1. Force Node.js Runtime (Required for GoogleAuth)
+// 1. FORCE NODEJS RUNTIME
 export const runtime = 'nodejs';
 
 /* ============================================================
-   2. Google Auth Setup (Vertex AI Service Account)
+   2. CRITICAL: BYPASS VALIDATION & HIJACKING
+   ============================================================ */
+// We provide a dummy OpenAI key. The SDK checks for this environment variable
+// presence during initialization, even though we won't use it.
+process.env.OPENAI_API_KEY = "sk-dummy-key-for-copilotkit-validation";
+
+/* ============================================================
+   3. GOOGLE AUTH SETUP (Your Actual Backend)
    ============================================================ */
 const getGoogleAuthClient = () => {
   if (!process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64) {
@@ -70,113 +74,78 @@ const getGoogleAuthClient = () => {
 };
 
 /* ============================================================
-   3. Custom Adapter (No Provider Declaration)
+   4. THE ADAPTER (The Bridge)
    ============================================================ */
-class VertexCustomAdapter implements CopilotServiceAdapter {
-  private endpoint: string;
+// We use LangChainAdapter because it handles the CopilotKit v1.50 streaming protocol automatically.
+// We use 'chainFn' to insert your custom Vertex logic.
+const serviceAdapter = new LangChainAdapter({
+  chainFn: async ({ messages }) => {
+    try {
+      // A. Extract User Input
+      const lastMessage = messages[messages.length - 1];
+      const userBuffer = (lastMessage as any).content || "";
 
-  // We define a name for debugging.
-  // We DELIBERATELY OMIT 'provider' and 'model' properties.
-  // This prevents the Vercel AI SDK from "hijacking" the request and hitting the 429 quota.
-  public name = "vertex-agent-engine";
+      // B. Authenticate & Call Vertex AI
+      const auth = getGoogleAuthClient();
+      const client = await auth.getClient();
+      const accessToken = await client.getAccessToken();
+      const endpoint = process.env.AGENT_ENGINE_ENDPOINT || '';
 
-  constructor(endpoint: string) {
-    this.endpoint = endpoint;
-  }
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          input: { text: userBuffer }
+        }),
+      });
 
-  async process(
-    request: CopilotRuntimeChatCompletionRequest
-  ): Promise<CopilotRuntimeChatCompletionResponse> {
-    const { messages, threadId, eventSource } = request;
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Vertex API Error:', response.status, errorText);
+        return `System Error: Vertex Agent Engine returned ${response.status}. Check Vercel logs.`;
+      }
 
-    // A. Extract User Input
-    const lastMessage = messages[messages.length - 1];
-    const userBuffer = (lastMessage as any).content || "";
+      // C. Process Response
+      const data = await response.json();
+      // Extract text from Vertex response structure
+      const agentText = data.output || data.text || JSON.stringify(data);
 
-    // B. Call Vertex AI (The REAL backend)
-    const auth = getGoogleAuthClient();
-    const client = await auth.getClient();
-    const accessToken = await client.getAccessToken();
+      // D. Return Text
+      // The adapter will automatically stream this text to the frontend
+      return agentText;
 
-    // Use the environment variable for the endpoint
-    const endpointUrl = this.endpoint;
-
-    const response = await fetch(endpointUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken.token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        input: { text: userBuffer }
-        // session_id: threadId // Uncomment if your agent supports sessions
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Vertex API Error:', response.status, errorText);
-      throw new Error(`Vertex Error: ${response.status} ${response.statusText}`);
+    } catch (error) {
+      console.error("Adapter Execution Error:", error);
+      return "An internal error occurred while connecting to the agent.";
     }
-
-    const data = await response.json();
-    
-    // C. Parse Response
-    // Vertex Agent Engine returns { output: "..." } or { text: "..." }
-    const agentText = data.output || data.text || JSON.stringify(data);
-
-    // D. Stream Response Manually (CopilotKit v1.50 Protocol)
-    await eventSource.stream(async (eventStream) => {
-      const responseId = crypto.randomUUID();
-
-      eventStream.sendTextMessageStart({
-        messageId: responseId,
-      });
-
-      eventStream.sendTextMessageContent({
-        messageId: responseId,
-        content: agentText,
-      });
-
-      eventStream.sendTextMessageEnd({
-        messageId: responseId,
-      });
-    });
-
-    // E. Return Metadata Only
-    return {
-      threadId: threadId || crypto.randomUUID(),
-    };
   }
-}
-
-/* ============================================================
-   4. Runtime Initialization (CRITICAL FIX)
-   ============================================================ */
-const serviceAdapter = new VertexCustomAdapter(
-  process.env.AGENT_ENGINE_ENDPOINT || ''
-);
-
-const runtimeInstance = new CopilotRuntime({
-  // FIX FOR "Unknown provider" CRASH:
-  // We disable observability so the runtime doesn't try to log "undefined/undefined".
-  observability_c: {
-    enabled: false,
-    
-    // FIX FOR "Type Error" BUILD FAIL:
-    // We must explicitly provide these dummy values because your strict TypeScript 
-    // configuration requires them, even though 'enabled' is false.
-    progressive: false,
-    hooks: {
-      handleRequest: async (data) => {},
-      handleResponse: async (data) => {},
-      handleError: async (data) => {},
-    }
-  },
 });
 
 /* ============================================================
-   5. Export Handler
+   5. THE MASQUERADE (Satisfying Telemetry)
+   ============================================================ */
+// We explicitly set the provider to "openai". 
+// 1. This satisfies the TelemetryRunner's "supported providers" check (Unknown provider error fixed).
+// 2. This prevents the Vercel AI SDK from hijacking the call to Google's public API (Quota error fixed).
+// 3. Our custom 'chainFn' above ensures we actually call Vertex, not OpenAI.
+(serviceAdapter as any).provider = "openai";
+(serviceAdapter as any).model = "gpt-4o";
+
+/* ============================================================
+   6. RUNTIME CONFIGURATION
+   ============================================================ */
+const runtimeInstance = new CopilotRuntime({
+  // Discord Advice: "Register your backend as an agent"
+  // When we provide a 'serviceAdapter', CopilotKit v1.50 automatically 
+  // wraps it in a BuiltInAgent named "default".
+  // This matches your frontend config: agentName: "default"
+});
+
+/* ============================================================
+   7. EXPORT HANDLER
    ============================================================ */
 export const POST = async (req: NextRequest) => {
   const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
