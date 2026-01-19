@@ -56,62 +56,72 @@ async function getGoogleAccessToken() {
   return tokenResponse.token;
 }
 
+// Session cache to map threadIds to Vertex AI session IDs
 const sessionCache = new Map<string, string>();
 
 export const POST = async (req: NextRequest) => {
   console.log("=".repeat(80));
-  console.log("📥 [POST] Request at", new Date().toISOString());
+  console.log("📥 [AG-UI Proxy] Request at", new Date().toISOString());
   console.log("=".repeat(80));
 
   try {
-    const requestBody = await req.json();
-    console.log("📦 [Request Body]:", JSON.stringify(requestBody, null, 2));
+    const body = await req.json();
+    console.log("📦 [Request]:", JSON.stringify(body, null, 2));
 
-    const method = requestBody.method;
-    const params = requestBody.params || {};
-    const body = requestBody.body || {};
+    const method = body.method;
+    const params = body.params || {};
+    const requestBody = body.body || {};
 
-    // Handle agent/connect (with slash)
-    if (method === "agent/connect") {
+    // Handle AG-UI Protocol Methods
+    
+    // Method 1: agent/connect - Connection handshake
+    if (method === "agent/connect" || method === "agent.connect") {
       console.log("🔌 [AG-UI] Connect request");
       return new Response(
         JSON.stringify({
+          jsonrpc: "2.0",
+          id: body.id || 1,
           result: {
             agentId: "locus",
-            connected: true,
+            capabilities: {
+              streaming: true,
+              tools: true,
+              state: true,
+            }
           }
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
+        { 
+          status: 200, 
+          headers: { "Content-Type": "application/json" } 
+        }
       );
     }
 
-    // Handle agent/run
-    if (method === "agent/run") {
+    // Method 2: agent/run - Execute agent with user input
+    if (method === "agent/run" || method === "agent.run") {
       console.log("🚀 [AG-UI] Run request");
       
-      const threadId = body.threadId || params.threadId || `thread_${Date.now()}`;
-      const messages = body.messages || [];
+      const threadId = requestBody.threadId || params.threadId || `thread_${Date.now()}`;
+      const messages = requestBody.messages || params.messages || [];
+      const state = requestBody.state || params.state || {};
       
-      // Extract user input from messages
+      // Extract the latest user message
       const userMessages = messages.filter((m: any) => m.role === "user");
       const lastUserMessage = userMessages[userMessages.length - 1];
       const userInput = lastUserMessage?.content || "";
 
       console.log("🔗 [ThreadID]:", threadId);
-      console.log("💬 [Input]:", userInput);
-      console.log("📨 [Messages count]:", messages.length);
+      console.log("💬 [User Input]:", userInput);
 
       if (!userInput) {
-        console.log("⚠️ No user input - sending welcome");
+        console.warn("⚠️ No user input found");
         return new Response(
           JSON.stringify({
+            jsonrpc: "2.0",
+            id: body.id || 1,
             result: {
-              events: [
-                {
-                  type: "TEXT_MESSAGE_CONTENT",
-                  delta: "👋 Welcome to LOCUS! I'm your AI-powered retail location intelligence assistant. Tell me about your business idea and target location to get started.",
-                }
-              ]
+              output: "Please send a message to start the analysis.",
+              state: {}
             }
           }),
           { status: 200, headers: { "Content-Type": "application/json" } }
@@ -121,58 +131,54 @@ export const POST = async (req: NextRequest) => {
       const token = await getGoogleAccessToken();
       console.log("🔑 [Auth] Token obtained");
 
-      // Get or create session
+      // Get or create Vertex AI session
       let sessionId: string = sessionCache.get(threadId) || "";
       
       if (!sessionId) {
-        console.log("🆕 [Session] Creating new session");
+        console.log("🆕 [Session] Creating new Vertex AI session");
         
-        const createResp = await fetch(`${AGENT_ENGINE_BASE}:createSession`, {
+        const createSessionResp = await fetch(`${AGENT_ENGINE_BASE}:createSession`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            session: { user_id: threadId }
+            session: {
+              user_id: threadId,
+            }
           }),
         });
 
-        const createRespText = await createResp.text();
-        console.log(`📥 [Session] Create response (${createResp.status}):`, createRespText);
-
-        if (!createResp.ok) {
-          console.error("❌ [Session] Create failed");
+        if (!createSessionResp.ok) {
+          const errorText = await createSessionResp.text();
+          console.error("❌ [Session] Create failed:", errorText);
           
           return new Response(
             JSON.stringify({
-              result: {
-                events: [
-                  {
-                    type: "TEXT_MESSAGE_CONTENT",
-                    delta: `Failed to initialize session: ${createRespText.substring(0, 200)}`,
-                  }
-                ]
+              jsonrpc: "2.0",
+              id: body.id || 1,
+              error: {
+                code: -32000,
+                message: `Session creation failed: ${errorText}`
               }
             }),
             { status: 200, headers: { "Content-Type": "application/json" } }
           );
         }
 
-        const sessionData = JSON.parse(createRespText);
+        const sessionData = await createSessionResp.json();
         sessionId = sessionData.name || sessionData.session_id || "";
         
         if (!sessionId) {
-          console.error("❌ [Session] No ID in response");
+          console.error("❌ [Session] No session ID returned:", sessionData);
           return new Response(
             JSON.stringify({
-              result: {
-                events: [
-                  {
-                    type: "TEXT_MESSAGE_CONTENT",
-                    delta: "Failed to create session - no ID returned",
-                  }
-                ]
+              jsonrpc: "2.0",
+              id: body.id || 1,
+              error: {
+                code: -32001,
+                message: "Failed to extract session ID from Vertex AI response"
               }
             }),
             { status: 200, headers: { "Content-Type": "application/json" } }
@@ -182,11 +188,11 @@ export const POST = async (req: NextRequest) => {
         sessionCache.set(threadId, sessionId);
         console.log("✅ [Session] Created:", sessionId);
       } else {
-        console.log("♻️ [Session] Reusing:", sessionId);
+        console.log("♻️ [Session] Reusing existing:", sessionId);
       }
 
-      // Query the agent
-      console.log("📤 [Agent] Querying with input:", userInput.substring(0, 100));
+      // Query the Vertex AI Agent Engine
+      console.log("📤 [Vertex AI] Sending query");
       
       const queryResp = await fetch(`${AGENT_ENGINE_BASE}/sessions/${sessionId}:query`, {
         method: "POST",
@@ -194,79 +200,88 @@ export const POST = async (req: NextRequest) => {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ query: userInput }),
+        body: JSON.stringify({
+          query: userInput,
+        }),
       });
 
-      const queryRespText = await queryResp.text();
-      console.log(`📥 [Agent] Query response (${queryResp.status}):`, queryRespText.substring(0, 500));
+      console.log(`📥 [Vertex AI] Response status: ${queryResp.status}`);
 
       if (!queryResp.ok) {
-        console.error("❌ [Agent] Query failed");
+        const errorText = await queryResp.text();
+        console.error("❌ [Vertex AI] Query failed:", errorText);
         
         return new Response(
           JSON.stringify({
-            result: {
-              events: [
-                {
-                  type: "TEXT_MESSAGE_CONTENT",
-                  delta: `Agent error: ${queryRespText.substring(0, 300)}`,
-                }
-              ]
+            jsonrpc: "2.0",
+            id: body.id || 1,
+            error: {
+              code: -32002,
+              message: `Vertex AI query failed: ${errorText.substring(0, 300)}`
             }
           }),
           { status: 200, headers: { "Content-Type": "application/json" } }
         );
       }
 
-      const result = JSON.parse(queryRespText);
-      console.log("✅ [Agent] Parsed response:", JSON.stringify(result, null, 2).substring(0, 1000));
+      const result = await queryResp.json();
+      console.log("✅ [Vertex AI] Full Response:", JSON.stringify(result, null, 2));
 
-      // Extract content from response
-      const content = result.response || result.output || result.message || result.text || JSON.stringify(result);
-      const state = result.state || result.session_state || {};
+      // Extract response content
+      const assistantContent = result.response || 
+                               result.output || 
+                               result.message || 
+                               result.text || 
+                               JSON.stringify(result);
+      
+      const agentState = result.state || 
+                        result.session_state || 
+                        result.agent_state || 
+                        {};
 
-      console.log("📝 [Response] Content:", content.substring(0, 200));
-      console.log("📝 [Response] State keys:", Object.keys(state));
+      console.log("📝 [Response] Content length:", assistantContent.length);
+      console.log("📝 [Response] State keys:", Object.keys(agentState));
 
-      // Return AG-UI formatted events
-      const events = [
-        {
-          type: "RUN_STARTED",
-          threadId: threadId,
-        },
-        {
-          type: "TEXT_MESSAGE_CONTENT",
-          delta: content,
-        },
-        {
-          type: "RUN_FINISHED",
-          threadId: threadId,
-          state: state,
-        }
-      ];
-
+      // Return in AG-UI format
       return new Response(
-        JSON.stringify({ result: { events } }),
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: body.id || 1,
+          result: {
+            output: assistantContent,
+            state: agentState,
+          }
+        }),
         { status: 200, headers: { "Content-Type": "application/json" } }
       );
     }
 
     // Unknown method
-    console.warn("⚠️ [Unknown method]:", method);
+    console.warn("⚠️ [Unknown Method]:", method);
     return new Response(
       JSON.stringify({
-        error: { message: `Unknown method: ${method}` }
+        jsonrpc: "2.0",
+        id: body.id || 1,
+        error: {
+          code: -32601,
+          message: `Method not found: ${method}`
+        }
       }),
-      { status: 400, headers: { "Content-Type": "application/json" } }
+      { status: 200, headers: { "Content-Type": "application/json" } }
     );
 
   } catch (error: any) {
-    console.error("❌ [Fatal]:", error.message);
+    console.error("❌ [Fatal Error]:", error.message);
     console.error("❌ [Stack]:", error.stack);
     
     return new Response(
       JSON.stringify({
-        error: { message: error.message }
+        jsonrpc: "2.0",
+        id: 1,
+        error: {
+          code: -32603,
+          message: `Internal error: ${error.message}`
+        }
       }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
