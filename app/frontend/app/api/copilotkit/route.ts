@@ -50,7 +50,7 @@ import {
 import { GoogleAuth } from 'google-auth-library';
 import crypto from 'crypto';
 
-// 1. Force Node.js Runtime
+// 1. Force Node.js Runtime (Required for GoogleAuth)
 export const runtime = 'nodejs';
 
 /* ============================================================
@@ -75,8 +75,9 @@ const getGoogleAuthClient = () => {
 class VertexCustomAdapter implements CopilotServiceAdapter {
   private endpoint: string;
 
-  // We define a name for debugging, but we deliberately OMIT 'provider' and 'model'.
-  // This prevents the Vercel AI SDK from hijacking the request.
+  // We define a name for debugging.
+  // We DELIBERATELY OMIT 'provider' and 'model' properties.
+  // This prevents the Vercel AI SDK from "hijacking" the request and hitting the 429 quota.
   public name = "vertex-agent-engine";
 
   constructor(endpoint: string) {
@@ -97,7 +98,10 @@ class VertexCustomAdapter implements CopilotServiceAdapter {
     const client = await auth.getClient();
     const accessToken = await client.getAccessToken();
 
-    const response = await fetch(this.endpoint, {
+    // Use the environment variable for the endpoint
+    const endpointUrl = this.endpoint;
+
+    const response = await fetch(endpointUrl, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken.token}`,
@@ -116,10 +120,12 @@ class VertexCustomAdapter implements CopilotServiceAdapter {
     }
 
     const data = await response.json();
+    
+    // C. Parse Response
+    // Vertex Agent Engine returns { output: "..." } or { text: "..." }
     const agentText = data.output || data.text || JSON.stringify(data);
 
-    // C. Stream Response Manually
-    // We use the eventSource to stream data according to v1.50 protocol
+    // D. Stream Response Manually (CopilotKit v1.50 Protocol)
     await eventSource.stream(async (eventStream) => {
       const responseId = crypto.randomUUID();
 
@@ -137,7 +143,7 @@ class VertexCustomAdapter implements CopilotServiceAdapter {
       });
     });
 
-    // D. Return Metadata Only
+    // E. Return Metadata Only
     return {
       threadId: threadId || crypto.randomUUID(),
     };
@@ -145,18 +151,21 @@ class VertexCustomAdapter implements CopilotServiceAdapter {
 }
 
 /* ============================================================
-   4. Runtime Initialization (With Type Fixes)
+   4. Runtime Initialization (CRITICAL FIX)
    ============================================================ */
 const serviceAdapter = new VertexCustomAdapter(
   process.env.AGENT_ENGINE_ENDPOINT || ''
 );
 
 const runtimeInstance = new CopilotRuntime({
-  // CRITICAL: We strictly disable observability.
-  // We must provide ALL properties (progressive, hooks) to satisfy the strict TypeScript definition
-  // in your installed version, even though enabled is false.
+  // FIX FOR "Unknown provider" CRASH:
+  // We disable observability so the runtime doesn't try to log "undefined/undefined".
   observability_c: {
     enabled: false,
+    
+    // FIX FOR "Type Error" BUILD FAIL:
+    // We must explicitly provide these dummy values because your strict TypeScript 
+    // configuration requires them, even though 'enabled' is false.
     progressive: false,
     hooks: {
       handleRequest: async (data) => {},
