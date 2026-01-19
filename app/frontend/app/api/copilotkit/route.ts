@@ -49,10 +49,17 @@ import {
 import { GoogleAuth } from 'google-auth-library';
 import crypto from 'crypto';
 
+// 1. RUNTIME CONFIG
 export const runtime = 'nodejs';
 
+// 2. CRITICAL FIX: Bypass Vercel AI SDK Validation
+// The SDK sees provider="google" and demands this key. 
+// We provide a dummy value to satisfy the check. 
+// Our actual code ignores this and uses the Service Account below.
+process.env.GOOGLE_GENERATIVE_AI_API_KEY = "dummy-key-to-bypass-sdk-validation";
+
 /* ============================================================
-   1. Google Auth Setup
+   3. Google Auth Setup (The REAL Authentication)
    ============================================================ */
 const getGoogleAuthClient = () => {
   if (!process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64) {
@@ -68,15 +75,14 @@ const getGoogleAuthClient = () => {
 };
 
 /* ============================================================
-   2. Custom Streaming Adapter (With Fixes)
+   4. Custom Adapter
    ============================================================ */
 class VertexStreamingAdapter implements CopilotServiceAdapter {
   private endpoint: string;
 
-  // FIX: Explicitly define the properties required by CopilotKit v1.50+
-  // The runtime needs these to avoid "Unknown provider" errors.
+  // We must define these to satisfy CopilotKit v1.50+ validation
   public name = "vertex-adapter";
-  public provider = "google"; // "google" is on the allowed list
+  public provider = "google"; // This triggers the check we just bypassed
   public model = "agent-engine";
 
   constructor(endpoint: string) {
@@ -90,9 +96,11 @@ class VertexStreamingAdapter implements CopilotServiceAdapter {
 
     // A. Extract User Input
     const lastMessage = messages[messages.length - 1];
+    // Safe cast to handle strict message types
     const userBuffer = (lastMessage as any).content || "";
 
     // B. Call Vertex AI
+    // We use the Service Account (OAuth2) here, NOT the API key
     const auth = getGoogleAuthClient();
     const client = await auth.getClient();
     const accessToken = await client.getAccessToken();
@@ -121,18 +129,15 @@ class VertexStreamingAdapter implements CopilotServiceAdapter {
     await eventSource.stream(async (eventStream) => {
       const responseId = crypto.randomUUID();
 
-      // 1. Start
       eventStream.sendTextMessageStart({
         messageId: responseId,
       });
 
-      // 2. Content
       eventStream.sendTextMessageContent({
         messageId: responseId,
         content: agentText,
       });
 
-      // 3. End
       eventStream.sendTextMessageEnd({
         messageId: responseId,
       });
@@ -146,7 +151,7 @@ class VertexStreamingAdapter implements CopilotServiceAdapter {
 }
 
 /* ============================================================
-   3. Runtime Initialization
+   5. Initialize & Export
    ============================================================ */
 const serviceAdapter = new VertexStreamingAdapter(
   process.env.AGENT_ENGINE_ENDPOINT || ''
@@ -154,9 +159,6 @@ const serviceAdapter = new VertexStreamingAdapter(
 
 const runtimeInstance = new CopilotRuntime();
 
-/* ============================================================
-   4. Export Handler
-   ============================================================ */
 export const POST = async (req: NextRequest) => {
   const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
     runtime: runtimeInstance,
