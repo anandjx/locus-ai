@@ -42,16 +42,19 @@
 import { NextRequest } from 'next/server';
 import {
   CopilotRuntime,
-  LangChainAdapter,
+  CopilotServiceAdapter,
+  CopilotRuntimeChatCompletionRequest,
+  CopilotRuntimeChatCompletionResponse,
   copilotRuntimeNextJSAppRouterEndpoint,
 } from '@copilotkit/runtime';
 import { GoogleAuth } from 'google-auth-library';
+import crypto from 'crypto';
 
-// 1. Runtime Config
+// 1. Force Node.js Runtime
 export const runtime = 'nodejs';
 
 /* ============================================================
-   2. Google Auth Setup (For Vertex Agent Engine)
+   2. Google Auth Setup (Vertex AI Service Account)
    ============================================================ */
 const getGoogleAuthClient = () => {
   if (!process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64) {
@@ -67,26 +70,34 @@ const getGoogleAuthClient = () => {
 };
 
 /* ============================================================
-   3. The Adapter Implementation
+   3. Custom Adapter (No Provider Declaration)
    ============================================================ */
-// We use LangChainAdapter to route requests to your custom Vertex Agent Engine endpoint
-// while adhering to the CopilotKit streaming protocol.
-const serviceAdapter = new LangChainAdapter({
-  chainFn: async ({ messages }) => {
+class VertexCustomAdapter implements CopilotServiceAdapter {
+  private endpoint: string;
+
+  // We define a name for debugging, but we deliberately OMIT 'provider' and 'model'.
+  // This prevents the Vercel AI SDK from hijacking the request.
+  public name = "vertex-agent-engine";
+
+  constructor(endpoint: string) {
+    this.endpoint = endpoint;
+  }
+
+  async process(
+    request: CopilotRuntimeChatCompletionRequest
+  ): Promise<CopilotRuntimeChatCompletionResponse> {
+    const { messages, threadId, eventSource } = request;
+
     // A. Extract User Input
-    // We cast to 'any' to ensure we capture content from all message types
     const lastMessage = messages[messages.length - 1];
     const userBuffer = (lastMessage as any).content || "";
 
-    // B. Authenticate with Vertex AI (Service Account)
+    // B. Call Vertex AI (The REAL backend)
     const auth = getGoogleAuthClient();
     const client = await auth.getClient();
     const accessToken = await client.getAccessToken();
 
-    const endpoint = process.env.AGENT_ENGINE_ENDPOINT || '';
-
-    // C. Execute Request
-    const response = await fetch(endpoint, {
+    const response = await fetch(this.endpoint, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken.token}`,
@@ -94,40 +105,70 @@ const serviceAdapter = new LangChainAdapter({
       },
       body: JSON.stringify({
         input: { text: userBuffer }
-        // session_id: threadId // Uncomment if session persistence is needed
+        // session_id: threadId // Uncomment if your agent supports sessions
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Vertex API Error:', response.status, errorText);
-      return `Error: Vertex Agent Engine returned ${response.status}.`;
+      throw new Error(`Vertex Error: ${response.status} ${response.statusText}`);
     }
 
-    // D. Process Response
     const data = await response.json();
-    // Vertex Agent Engine typically returns 'output' or 'text'
     const agentText = data.output || data.text || JSON.stringify(data);
 
-    // E. Return text for streaming
-    return agentText;
+    // C. Stream Response Manually
+    // We use the eventSource to stream data according to v1.50 protocol
+    await eventSource.stream(async (eventStream) => {
+      const responseId = crypto.randomUUID();
+
+      eventStream.sendTextMessageStart({
+        messageId: responseId,
+      });
+
+      eventStream.sendTextMessageContent({
+        messageId: responseId,
+        content: agentText,
+      });
+
+      eventStream.sendTextMessageEnd({
+        messageId: responseId,
+      });
+    });
+
+    // D. Return Metadata Only
+    return {
+      threadId: threadId || crypto.randomUUID(),
+    };
   }
+}
+
+/* ============================================================
+   4. Runtime Initialization (With Type Fixes)
+   ============================================================ */
+const serviceAdapter = new VertexCustomAdapter(
+  process.env.AGENT_ENGINE_ENDPOINT || ''
+);
+
+const runtimeInstance = new CopilotRuntime({
+  // CRITICAL: We strictly disable observability.
+  // We must provide ALL properties (progressive, hooks) to satisfy the strict TypeScript definition
+  // in your installed version, even though enabled is false.
+  observability_c: {
+    enabled: false,
+    progressive: false,
+    hooks: {
+      handleRequest: async (data) => {},
+      handleResponse: async (data) => {},
+      handleError: async (data) => {},
+    }
+  },
 });
 
 /* ============================================================
-   4. Provider Configuration (The Fix)
+   5. Export Handler
    ============================================================ */
-// We explicitly identify as "google". 
-// The Runtime will check process.env.GOOGLE_GENERATIVE_AI_API_KEY.
-// Since you have now provided it, this validation will PASS.
-(serviceAdapter as any).provider = "google";
-(serviceAdapter as any).model = "gemini-2.5-pro"; // Or your specific model version
-
-/* ============================================================
-   5. Runtime Initialization
-   ============================================================ */
-const runtimeInstance = new CopilotRuntime();
-
 export const POST = async (req: NextRequest) => {
   const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
     runtime: runtimeInstance,
