@@ -47,15 +47,11 @@ import {
 } from '@copilotkit/runtime';
 import { GoogleAuth } from 'google-auth-library';
 
-// 1. Force Node.js Runtime
+// 1. Runtime Config
 export const runtime = 'nodejs';
 
-// 2. THE TROJAN HORSE CONFIG
-// We must set this to satisfy any "eager" SDK checks, even though we won't use it.
-process.env.OPENAI_API_KEY = "dummy-key-to-bypass-sdk-validation";
-
 /* ============================================================
-   3. Google Auth Setup (The REAL Authentication)
+   2. Google Auth Setup (For Vertex Agent Engine)
    ============================================================ */
 const getGoogleAuthClient = () => {
   if (!process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64) {
@@ -71,22 +67,25 @@ const getGoogleAuthClient = () => {
 };
 
 /* ============================================================
-   4. The Solution: Masquerading Adapter
+   3. The Adapter Implementation
    ============================================================ */
+// We use LangChainAdapter to route requests to your custom Vertex Agent Engine endpoint
+// while adhering to the CopilotKit streaming protocol.
 const serviceAdapter = new LangChainAdapter({
   chainFn: async ({ messages }) => {
     // A. Extract User Input
-    // Safe cast to 'any' to avoid strict type issues
+    // We cast to 'any' to ensure we capture content from all message types
     const lastMessage = messages[messages.length - 1];
     const userBuffer = (lastMessage as any).content || "";
 
-    // B. Call Vertex AI (Your actual backend)
+    // B. Authenticate with Vertex AI (Service Account)
     const auth = getGoogleAuthClient();
     const client = await auth.getClient();
     const accessToken = await client.getAccessToken();
 
     const endpoint = process.env.AGENT_ENGINE_ENDPOINT || '';
-    
+
+    // C. Execute Request
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -95,40 +94,40 @@ const serviceAdapter = new LangChainAdapter({
       },
       body: JSON.stringify({
         input: { text: userBuffer }
+        // session_id: threadId // Uncomment if session persistence is needed
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Vertex API Error:', response.status, errorText);
-      return `Error: Vertex Agent Engine returned ${response.status}. Check logs.`;
+      return `Error: Vertex Agent Engine returned ${response.status}.`;
     }
 
-    // C. Process Response
+    // D. Process Response
     const data = await response.json();
+    // Vertex Agent Engine typically returns 'output' or 'text'
     const agentText = data.output || data.text || JSON.stringify(data);
 
-    // D. Return plain text
-    // LangChainAdapter will handle the streaming protocol for us automatically
+    // E. Return text for streaming
     return agentText;
   }
 });
 
-// CRITICAL BYPASS:
-// We explicitly set these properties to "openai" to satisfy the Runtime's strict validation list.
-// The Runtime will think this is an OpenAI adapter and allow it to proceed.
-// Since we provided a custom 'chainFn' above, the actual OpenAI SDK is NEVER called.
-(serviceAdapter as any).provider = "openai";
-(serviceAdapter as any).model = "gpt-4o";
+/* ============================================================
+   4. Provider Configuration (The Fix)
+   ============================================================ */
+// We explicitly identify as "google". 
+// The Runtime will check process.env.GOOGLE_GENERATIVE_AI_API_KEY.
+// Since you have now provided it, this validation will PASS.
+(serviceAdapter as any).provider = "google";
+(serviceAdapter as any).model = "gemini-2.5-pro"; // Or your specific model version
 
 /* ============================================================
    5. Runtime Initialization
    ============================================================ */
 const runtimeInstance = new CopilotRuntime();
 
-/* ============================================================
-   6. Export Handler
-   ============================================================ */
 export const POST = async (req: NextRequest) => {
   const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
     runtime: runtimeInstance,
