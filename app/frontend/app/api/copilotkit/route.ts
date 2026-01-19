@@ -68,10 +68,16 @@ const getGoogleAuthClient = () => {
 };
 
 /* ============================================================
-   2. Custom Streaming Adapter (The Fix)
+   2. Custom Streaming Adapter (With Fixes)
    ============================================================ */
 class VertexStreamingAdapter implements CopilotServiceAdapter {
   private endpoint: string;
+
+  // FIX: Explicitly define the properties required by CopilotKit v1.50+
+  // The runtime needs these to avoid "Unknown provider" errors.
+  public name = "vertex-adapter";
+  public provider = "google"; // "google" is on the allowed list
+  public model = "agent-engine";
 
   constructor(endpoint: string) {
     this.endpoint = endpoint;
@@ -83,11 +89,10 @@ class VertexStreamingAdapter implements CopilotServiceAdapter {
     const { messages, threadId, eventSource } = request;
 
     // A. Extract User Input
-    // Safe cast to 'any' to get content from the strict message type
     const lastMessage = messages[messages.length - 1];
     const userBuffer = (lastMessage as any).content || "";
 
-    // B. Call Vertex AI (The backend work)
+    // B. Call Vertex AI
     const auth = getGoogleAuthClient();
     const client = await auth.getClient();
     const accessToken = await client.getAccessToken();
@@ -104,38 +109,36 @@ class VertexStreamingAdapter implements CopilotServiceAdapter {
     });
 
     if (!response.ok) {
-      throw new Error(`Vertex Error: ${response.statusText}`);
+      const errorText = await response.text();
+      console.error('Vertex API Error:', response.status, errorText);
+      throw new Error(`Vertex Error: ${response.status} ${response.statusText}`);
     }
 
     const data = await response.json();
     const agentText = data.output || data.text || JSON.stringify(data);
 
-    // C. STREAM THE RESPONSE (Critical Step)
-    // Instead of returning the text, we emit it to the event stream.
-    // This matches the v1.50 architecture perfectly.
+    // C. STREAM THE RESPONSE
     await eventSource.stream(async (eventStream) => {
       const responseId = crypto.randomUUID();
 
-      // 1. Start the message
+      // 1. Start
       eventStream.sendTextMessageStart({
         messageId: responseId,
       });
 
-      // 2. Send the content
+      // 2. Content
       eventStream.sendTextMessageContent({
         messageId: responseId,
         content: agentText,
       });
 
-      // 3. End the message
+      // 3. End
       eventStream.sendTextMessageEnd({
         messageId: responseId,
       });
     });
 
     // D. Return Metadata Only
-    // This satisfies the CopilotRuntimeChatCompletionResponse interface
-    // which only expects threadId/runId, NOT the messages.
     return {
       threadId: threadId || crypto.randomUUID(),
     };
