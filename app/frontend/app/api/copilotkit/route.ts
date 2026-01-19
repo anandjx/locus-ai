@@ -41,15 +41,16 @@
 import { NextRequest } from 'next/server';
 import {
   CopilotRuntime,
-  CopilotServiceAdapter,
-  CopilotRuntimeChatCompletionRequest,
-  CopilotRuntimeChatCompletionResponse,
+  LangChainAdapter, // We use this instead of implementing our own
   copilotRuntimeNextJSAppRouterEndpoint,
 } from '@copilotkit/runtime';
 import { GoogleAuth } from 'google-auth-library';
 
+// FORCE NODEJS RUNTIME
+// Google Auth Library requires Node.js standard libraries
+export const runtime = 'nodejs';
+
 // 1. Setup Google Auth Client
-// We decodes the base64 key to avoid file system issues in Vercel Serverless
 const getGoogleAuthClient = () => {
   if (!process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64) {
     throw new Error('Missing GOOGLE_SERVICE_ACCOUNT_KEY_BASE64');
@@ -63,24 +64,17 @@ const getGoogleAuthClient = () => {
   });
 };
 
-// 2. Define the Custom Adapter for Vertex AI Agent Engine
-class VertexReasoningEngineAdapter implements CopilotServiceAdapter {
-  private endpoint: string;
-
-  constructor(endpoint: string) {
-    this.endpoint = endpoint;
-  }
-
-  async process(
-    request: CopilotRuntimeChatCompletionRequest
-  ): Promise<CopilotRuntimeChatCompletionResponse> {
-    const { messages, threadId } = request;
-    
-    // Extract the latest user message
+// 2. Define the Adapter using LangChainAdapter
+// This wrapper handles the complex v1.50 event streaming protocol automatically.
+// We just need to return the text string from Vertex.
+const serviceAdapter = new LangChainAdapter({
+  chainFn: async ({ messages }) => {
+    // A. Extract the user's last message
+    // We cast to 'any' to avoid strict LangChain type dependencies
     const lastMessage = messages[messages.length - 1];
-    const userBuffer = lastMessage.content;
+    const userBuffer = (lastMessage as any).content || "";
 
-    // Get OAuth Token
+    // B. Get OAuth Token
     const auth = getGoogleAuthClient();
     const client = await auth.getClient();
     const accessToken = await client.getAccessToken();
@@ -89,9 +83,11 @@ class VertexReasoningEngineAdapter implements CopilotServiceAdapter {
       throw new Error('Failed to generate Google Access Token');
     }
 
-    // 3. Call Vertex AI Agent Engine (REST API)
-    // Structure matches the standard AdkApp :query interface
-    const response = await fetch(this.endpoint, {
+    // C. Call Vertex AI Agent Engine
+    // Note: We use the endpoint from env vars
+    const endpoint = process.env.AGENT_ENGINE_ENDPOINT || '';
+    
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken.token}`,
@@ -100,8 +96,6 @@ class VertexReasoningEngineAdapter implements CopilotServiceAdapter {
       body: JSON.stringify({
         input: {
           text: userBuffer
-          // Pass threadId here if your Python agent supports session handling
-          // session_id: threadId 
         }
       }),
     });
@@ -109,41 +103,27 @@ class VertexReasoningEngineAdapter implements CopilotServiceAdapter {
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Vertex API Error:', response.status, errorText);
-      throw new Error(`Vertex Agent Engine error: ${response.statusText}`);
+      return `Error: Vertex Agent Engine returned ${response.status}. Check logs.`;
     }
 
+    // D. Extract Text and Return
     const data = await response.json();
-
-    // 4. Translate Vertex Response -> CopilotKit Response
-    // Agent Engine typically returns { output: "..." } or { text: "..." }
-    // We strictly typecheck or fallback to stringifying the data
+    
+    // We assume Vertex returns { output: "..." } or { text: "..." }
     const agentText = data.output || data.text || JSON.stringify(data);
-
-    return {
-      threadId,
-      // We wrap the result in a generated message
-      generatedOutputs: [
-        {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: agentText,
-        },
-      ],
-    };
+    
+    // Simply returning the string allows LangChainAdapter to handle the response protocol
+    return agentText;
   }
-}
+});
 
-// 5. Initialize Runtime with the Adapter
-const serviceAdapter = new VertexReasoningEngineAdapter(
-  process.env.AGENT_ENGINE_ENDPOINT || ''
-);
+// 3. Initialize Runtime
+const runtimeInstance = new CopilotRuntime();
 
-const runtime = new CopilotRuntime();
-
-// 6. Export the Handler
+// 4. Export the Handler
 export const POST = async (req: NextRequest) => {
   const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
-    runtime,
+    runtime: runtimeInstance,
     serviceAdapter,
     endpoint: '/api/copilotkit',
   });
