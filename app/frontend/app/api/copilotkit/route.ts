@@ -1,10 +1,9 @@
-/**
- * CopilotKit API Route - Proxies requests to the backend AG-UI agent
- *
- * Uses LangGraphHttpAgent which is the generic HTTP agent
- * for connecting to any AG-UI compatible backend, including ag-ui-adk.
- */
-
+// /**
+//  * CopilotKit API Route - Proxies requests to the backend AG-UI agent
+//  *
+//  * Uses LangGraphHttpAgent which is the generic HTTP agent
+//  * for connecting to any AG-UI compatible backend, including ag-ui-adk.
+//  */
 
 // import {
 //   CopilotRuntime,
@@ -39,6 +38,7 @@
 
 
 
+
 import { NextRequest } from 'next/server';
 import {
   CopilotRuntime,
@@ -50,16 +50,13 @@ import { GoogleAuth } from 'google-auth-library';
 // 1. FORCE NODEJS RUNTIME
 export const runtime = 'nodejs';
 
-/* ============================================================
-   2. CRITICAL: BYPASS VALIDATION & HIJACKING
-   ============================================================ */
-// We provide a dummy OpenAI key. The SDK checks for this environment variable
-// presence during initialization, even though we won't use it.
+// 2. BYPASS VALIDATION
 process.env.OPENAI_API_KEY = "sk-dummy-key-for-copilotkit-validation";
 
-/* ============================================================
-   3. GOOGLE AUTH SETUP (Your Actual Backend)
-   ============================================================ */
+// 3. SESSION CACHE (Critical for Agent Engine)
+const sessionCache = new Map<string, string>();
+
+// 4. GOOGLE AUTH
 const getGoogleAuthClient = () => {
   if (!process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64) {
     throw new Error('Missing GOOGLE_SERVICE_ACCOUNT_KEY_BASE64');
@@ -73,81 +70,129 @@ const getGoogleAuthClient = () => {
   });
 };
 
-/* ============================================================
-   4. THE ADAPTER (The Bridge)
-   ============================================================ */
-// We use LangChainAdapter because it handles the CopilotKit v1.50 streaming protocol automatically.
-// We use 'chainFn' to insert your custom Vertex logic.
+// 5. THE ADAPTER
 const serviceAdapter = new LangChainAdapter({
-  chainFn: async ({ messages }) => {
+  chainFn: async ({ messages, threadId }) => {
     try {
+      console.log('📥 [Adapter] Processing request', { 
+        messageCount: messages.length,
+        threadId 
+      });
+
       // A. Extract User Input
       const lastMessage = messages[messages.length - 1];
-      const userBuffer = (lastMessage as any).content || "";
+      const userInput = (lastMessage as any).content || "";
+      
+      console.log('💬 [Adapter] User input:', userInput);
 
-      // B. Authenticate & Call Vertex AI
+      if (!userInput) {
+        return "Please send a message to start the analysis.";
+      }
+
+      // B. Authenticate
       const auth = getGoogleAuthClient();
       const client = await auth.getClient();
       const accessToken = await client.getAccessToken();
-      const endpoint = process.env.AGENT_ENGINE_ENDPOINT || '';
+      const baseEndpoint = (process.env.AGENT_ENGINE_ENDPOINT || '').replace(':query', '');
 
-      const response = await fetch(endpoint, {
+      console.log('🔑 [Adapter] Auth token obtained');
+
+      // C. Get or Create Session
+      const sessionKey = threadId || `thread_${Date.now()}`;
+      let sessionId = sessionCache.get(sessionKey);
+
+      if (!sessionId) {
+        console.log('🆕 [Adapter] Creating new session');
+        
+        const createSessionResp = await fetch(`${baseEndpoint}:createSession`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken.token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            session: { user_id: sessionKey }
+          }),
+        });
+
+        if (!createSessionResp.ok) {
+          const errorText = await createSessionResp.text();
+          console.error('❌ [Adapter] Session creation failed:', errorText);
+          throw new Error(`Session creation failed: ${errorText}`);
+        }
+
+        const sessionData = await createSessionResp.json();
+        sessionId = sessionData.name || sessionData.session_id;
+        
+        if (!sessionId) {
+          throw new Error('No session ID returned from Vertex AI');
+        }
+
+        sessionCache.set(sessionKey, sessionId);
+        console.log('✅ [Adapter] Session created:', sessionId);
+      } else {
+        console.log('♻️ [Adapter] Reusing session:', sessionId);
+      }
+
+      // D. Query the Agent
+      const queryEndpoint = `${baseEndpoint}/sessions/${sessionId}:query`;
+      console.log('📤 [Adapter] Querying agent:', queryEndpoint);
+
+      const response = await fetch(queryEndpoint, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${accessToken.token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          input: { text: userBuffer }
+          query: userInput,
         }),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('Vertex API Error:', response.status, errorText);
-        return `System Error: Vertex Agent Engine returned ${response.status}. Check Vercel logs.`;
+        console.error('❌ [Adapter] Vertex AI error:', response.status, errorText);
+        return `I encountered an error (${response.status}). The agent team has been notified.`;
       }
 
-      // C. Process Response
+      // E. Process Response
       const data = await response.json();
-      // Extract text from Vertex response structure
-      const agentText = data.output || data.text || JSON.stringify(data);
+      console.log('✅ [Adapter] Response received:', {
+        keys: Object.keys(data),
+        hasResponse: !!data.response,
+        hasOutput: !!data.output,
+      });
 
-      // D. Return Text
-      // The adapter will automatically stream this text to the frontend
+      // Extract agent response
+      const agentText = data.response || 
+                       data.output || 
+                       data.message ||
+                       data.text || 
+                       JSON.stringify(data);
+
+      console.log('📝 [Adapter] Returning:', agentText.substring(0, 100));
+
       return agentText;
 
-    } catch (error) {
-      console.error("Adapter Execution Error:", error);
-      return "An internal error occurred while connecting to the agent.";
+    } catch (error: any) {
+      console.error("❌ [Adapter] Fatal error:", error.message);
+      console.error("❌ [Adapter] Stack:", error.stack);
+      return `System error: ${error.message}. Please try again.`;
     }
   }
 });
 
-/* ============================================================
-   5. THE MASQUERADE (Satisfying Telemetry)
-   ============================================================ */
-// We explicitly set the provider to "openai". 
-// 1. This satisfies the TelemetryRunner's "supported providers" check (Unknown provider error fixed).
-// 2. This prevents the Vercel AI SDK from hijacking the call to Google's public API (Quota error fixed).
-// 3. Our custom 'chainFn' above ensures we actually call Vertex, not OpenAI.
+// 6. MASQUERADE
 (serviceAdapter as any).provider = "openai";
 (serviceAdapter as any).model = "gpt-4o";
 
-/* ============================================================
-   6. RUNTIME CONFIGURATION
-   ============================================================ */
-const runtimeInstance = new CopilotRuntime({
-  // Discord Advice: "Register your backend as an agent"
-  // When we provide a 'serviceAdapter', CopilotKit v1.50 automatically 
-  // wraps it in a BuiltInAgent named "default".
-  // This matches your frontend config: agentName: "default"
-});
+// 7. RUNTIME
+const runtimeInstance = new CopilotRuntime();
 
-/* ============================================================
-   7. EXPORT HANDLER
-   ============================================================ */
+// 8. EXPORT HANDLER
 export const POST = async (req: NextRequest) => {
+  console.log('📥 [POST] Request received');
+  
   const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
     runtime: runtimeInstance,
     serviceAdapter,

@@ -17,7 +17,7 @@ import type { AgentState } from "@/lib/types";
    Reusable Agent Configuration (unchanged)
 ====================================================== */
 const AGENT_CONFIG = {
-  // agentName: "locus", {/*this hould be the agent name when running locally */}
+  // agentName: "locus", {/*name when running locally */}
   agentName: "default",
   productName: "LOCUS",
   tagline: "Where decisions meet intelligence",
