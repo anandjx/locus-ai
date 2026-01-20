@@ -45,13 +45,12 @@ import {
   copilotRuntimeNextJSAppRouterEndpoint,
 } from '@copilotkit/runtime';
 import { GoogleAuth } from 'google-auth-library';
+import { AIMessage } from "@langchain/core/messages"; // Standard LangChain message type
 
+// 1. FORCE NODEJS RUNTIME
 export const runtime = 'nodejs';
 
-/**
- * AUTH HELPER: Decodes the Base64 Service Account and creates a GoogleAuth client.
- * This ensures we are using "Real" auth, not dummy keys.
- */
+// 2. CONFIGURATION & AUTH
 const getGoogleAuthClient = () => {
   if (!process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64) {
     throw new Error('Missing GOOGLE_SERVICE_ACCOUNT_KEY_BASE64');
@@ -65,57 +64,40 @@ const getGoogleAuthClient = () => {
   });
 };
 
-/**
- * SESSION CACHE: Maps CopilotKit threadIds to Vertex AI Session IDs.
- * Vertex AI requires a specific session resource to maintain history.
- */
-const sessionCache = new Map<string, string>();
-
-/**
- * ADAPTER: Connects CopilotKit to Vertex AI Agent Engine.
- */
+// 3. THE ADAPTER (ACTING AS YOUR MIDDLEWARE)
 const serviceAdapter = new LangChainAdapter({
   chainFn: async ({ messages, threadId }) => {
     try {
-      console.log('🚀 [Vertex Adapter] Processing request for thread:', threadId);
+      console.log('📥 [Adapter] Processing request', { threadId });
 
-      // 1. Extract the latest user message
+      // A. Extract User Input
       const lastMessage = messages[messages.length - 1];
       const userInput = (lastMessage as any).content || "";
       
-      if (!userInput) return "I'm listening...";
+      if (!userInput) return "Please send a message to start the analysis.";
 
-      // 2. Authenticate
+      // B. Authenticate with Google
       const auth = getGoogleAuthClient();
       const client = await auth.getClient();
       const accessToken = await client.getAccessToken();
       const token = accessToken.token;
 
-      if (!token) throw new Error("Failed to generate Google Access Token");
-
+      // C. Construct Vertex AI Endpoint
       const projectId = process.env.GOOGLE_CLOUD_PROJECT;
-      const location = process.env.GOOGLE_CLOUD_LOCATION;
-      const resourceId = process.env.AGENT_ENGINE_RESOURCE_ID; // The ID usually starting with numbers
+      const location = process.env.GOOGLE_CLOUD_LOCATION; // e.g., us-central1
+      const resourceId = process.env.AGENT_ENGINE_RESOURCE_ID; // The ID of your deployed agent
 
       if (!projectId || !location || !resourceId) {
-        throw new Error("Missing Vertex AI environment variables (PROJECT, LOCATION, or RESOURCE_ID)");
+        throw new Error("Missing Vertex AI env vars (PROJECT, LOCATION, or AGENT_ENGINE_RESOURCE_ID)");
       }
 
-      // 3. Manage Vertex AI Session
-      // We check if we already have a Vertex Session ID for this Copilot thread.
-      // If not, we could create one, but for simplicity/robustness with Agent Engine,
-      // we often let the engine handle transient context or map it manually.
-      // Here we map 1:1 if your agent supports session persistence.
-      
-      // NOTE: Agent Engine API format is:
-      // POST https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/reasoningEngines/{id}:query
-      
-      const baseUrl = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/reasoningEngines/${resourceId}`;
-      const queryEndpoint = `${baseUrl}:query`;
+      // The standard Reasoning Engine query endpoint
+      const queryEndpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/reasoningEngines/${resourceId}:query`;
 
-      console.log('📡 [Vertex Adapter] Querying Agent Engine:', queryEndpoint);
+      console.log('📤 [Adapter] Querying Vertex AI:', queryEndpoint);
 
-      // 4. Call Agent Engine
+      // D. Call the Agent
+      // Mimics the behavior of 'ADKAgent.run()' but over HTTP
       const response = await fetch(queryEndpoint, {
         method: 'POST',
         headers: {
@@ -123,44 +105,52 @@ const serviceAdapter = new LangChainAdapter({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          input: { query: userInput } // The standard ADK/Reasoning Engine input schema
+          input: { query: userInput } // Standard ADK input schema
         }),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('❌ [Vertex Adapter] API Error:', response.status, errorText);
-        return `Error connecting to Locus Brain: ${response.status} - ${response.statusText}`;
+        console.error('❌ [Adapter] Vertex Error:', response.status, errorText);
+        return `Error from Locus Brain (${response.status}). Please check logs.`;
       }
 
-      // 5. Process Response
-      // Agent Engine returns a JSON object. We need to extract the text/answer.
+      // E. Parse Response (Mimicking endpoint.py logic)
       const data = await response.json();
-      console.log('✅ [Vertex Adapter] Received response payload');
-
-      // The ADK Agent Engine response structure typically wraps the output.
-      // It might look like { output: "..." } or { result: "..." } depending on your agent definition.
-      // We attempt to find the text content.
-      let agentResponse = 
-        data.output || 
-        data.result || 
-        data.response || 
-        (typeof data === 'string' ? data : JSON.stringify(data));
-
-      // Handle complex object returns (e.g. if agent returns a dict)
-      if (typeof agentResponse === 'object') {
-        agentResponse = JSON.stringify(agentResponse, null, 2);
+      
+      // The Agent Engine usually wraps the return value in 'output' or 'result'
+      let agentText = "";
+      
+      if (data.output) {
+        agentText = typeof data.output === 'string' ? data.output : JSON.stringify(data.output);
+      } else if (data.result) {
+         agentText = typeof data.result === 'string' ? data.result : JSON.stringify(data.result);
+      } else {
+        // Fallback: dump the whole JSON if structure is unknown
+        agentText = JSON.stringify(data);
       }
 
-      return agentResponse;
+      console.log('✅ [Adapter] Response received, returning text.');
+
+      // F. RETURN LANGCHAIN MESSAGE
+      // This is crucial. Returning a string is okay, but returning an AIMessage object
+      // is safer for LangChainAdapter to process.
+      return new AIMessage(agentText);
 
     } catch (error: any) {
-      console.error("🔥 [Vertex Adapter] Fatal Error:", error);
-      return `System Error: ${error.message}`;
+      console.error("❌ [Adapter] Fatal error:", error);
+      return `System error: ${error.message}`;
     }
   }
 });
 
+// 4. CRITICAL: MASQUERADE AS OPENAI
+// This fixes the "Unknown provider 'undefined'" error.
+// We tell CopilotKit: "Trust me, I am acting like OpenAI."
+(serviceAdapter as any).provider = "openai";
+(serviceAdapter as any).model = "gpt-4o"; 
+
+// 5. RUNTIME INSTANCE
 const runtimeInstance = new CopilotRuntime();
 
 export const POST = async (req: NextRequest) => {
