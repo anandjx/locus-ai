@@ -152,19 +152,16 @@ Provide your business idea and geographic region clearly and I will analyze the 
                 Discover the Optimal Location for your Business
               </h2>
 
-              <p className="text-slate-700 max-w-xl mx-auto mb-10 text-lg leading-relaxed">
+              <p className="text-slate-700 max-w-xl mx-auto mb-10 text-lg leading-relaxed text-center">
                 Enter your business idea and city in the chat to receive
                 AI-driven market research, competitor analysis and
                 strategic recommendations.
+                <br />
+                <span className="mt-2 inline-block text-slate-500 text-base">
+                  To begin, click the <span className="font-medium text-slate-700">💬 chat bubble</span> in the lower-right corner.
+                </span>
               </p>
 
-              <p className="text-slate-500 text-base flex items-center justify-center gap-2">
-                <span className="text-slate-400">To begin, click the</span>
-                <span className="inline-flex items-center gap-1 font-medium text-slate-700">
-                  💬 chat bubble
-                </span>
-                <span className="text-slate-400">in the lower-right corner</span>
-              </p>
 
               {/* Editorial body copy tone
               <p className="text-slate-700 max-w-xl mx-auto mb-10 text-lg leading-relaxed">
