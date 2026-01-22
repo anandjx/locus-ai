@@ -86,6 +86,8 @@
 #     print("Frontend should connect to this URL")
 #     uvicorn.run(app, host="0.0.0.0", port=port)
 
+
+
 import os
 import sys
 from pathlib import Path
@@ -129,7 +131,7 @@ app = FastAPI(
 )
 
 # 6. Unified CORS Configuration
-# allowing "*" is fine for testing, but in production you can restrict this list
+# allowing "*" is fine for testing, but in production you can restrict thithiss list
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
