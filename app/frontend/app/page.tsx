@@ -51,8 +51,8 @@ export default function Home() {
 
   return (
     <CopilotSidebar
-      defaultOpen
-      clickOutsideToClose={false}
+      defaultOpen={false}
+      clickOutsideToClose={true}
       labels={{
         title: AGENT_CONFIG.productName,
         initial: `Welcome to **${AGENT_CONFIG.productName}**.
