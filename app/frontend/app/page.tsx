@@ -59,7 +59,9 @@ export default function Home() {
 
 I am your AI-powered location intelligence system.
 
-Provide your business idea and geographic region clearly and I will analyze the demand dynamics, the competitive landscape and the location viability to deliver strategic recommendations. A fully structured HTML report will be delivered at the end of the analysis.
+Provide your business idea and geographic region clearly and I will analyze the demand dynamics, the competitive landscape and the location viability to deliver strategic recommendations.
+<br />
+**A fully structured HTML report will be delivered at the end of the analysis**.
 
 **Try examples:**
 - "Evaluate Downtown Toronto for a coworking space" 
