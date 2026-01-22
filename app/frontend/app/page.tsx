@@ -212,8 +212,7 @@
 
 "use client";
 
-import { useState } from "react";
-import { CopilotSidebar, useCopilotSidebar } from "@copilotkit/react-ui";
+import { CopilotSidebar } from "@copilotkit/react-ui";
 import { useCoAgent, useCoAgentStateRender } from "@copilotkit/react-core";
 import { PipelineTimeline } from "@/components/PipelineTimeline";
 import { LocationReport } from "@/components/LocationReport";
@@ -240,9 +239,6 @@ export default function Home() {
     name: AGENT_CONFIG.agentName,
   });
 
-  // This hook gives us control over the sidebar visibility
-  const { setVisible } = useCopilotSidebar();
-
   useCoAgentStateRender<AgentState>({
     name: AGENT_CONFIG.agentName,
     render: ({ state }) => {
@@ -260,14 +256,9 @@ export default function Home() {
     },
   });
 
-  // Helper to open sidebar when user clicks a feature
-  const handleStartAnalysis = () => {
-    setVisible(true);
-  };
-
   return (
     <CopilotSidebar
-      defaultOpen={false}
+      defaultOpen={false} // Closed by default to show Landing Page
       clickOutsideToClose={true}
       labels={{
         title: AGENT_CONFIG.productName,
@@ -354,36 +345,25 @@ I am your AI-powered location intelligence system.
               </h2>
 
               <p className="text-slate-700 max-w-xl mx-auto mb-10 text-lg leading-relaxed">
-                Enter your business idea and city to receive AI-driven market research, competitor analysis, and strategic recommendations.
+                To start, click the 💬 <strong>Chat Bubble</strong> on the right edge of your screen.
               </p>
 
-              {/* NEW: PROMINENT CTA BUTTON */}
-              <button 
-                onClick={handleStartAnalysis}
-                className="mb-12 px-8 py-4 bg-gradient-to-r from-indigo-600 to-cyan-600 text-white text-xl font-bold rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all animate-pulse"
-              >
-                ✨ Start New Analysis
-              </button>
-
-              {/* NEW: INTERACTIVE FEATURE CARDS */}
-              <div className="grid md:grid-cols-3 gap-6 max-w-3xl mx-auto">
+              {/* STATICS CARDS (Non-interactive to avoid errors) */}
+              <div className="grid md:grid-cols-3 gap-6 max-w-3xl mx-auto mt-12">
                 <FeatureCard
                   icon="🔍"
                   title="Market Research"
                   description="Live analysis of demand and demographics"
-                  onClick={handleStartAnalysis}
                 />
                 <FeatureCard
                   icon="📍"
                   title="Competitor Mapping"
                   description="Real-world competitor intelligence"
-                  onClick={handleStartAnalysis}
                 />
                 <FeatureCard
                   icon="🧠"
                   title="AI Strategy"
                   description="Deep reasoning and decision synthesis"
-                  onClick={handleStartAnalysis}
                 />
               </div>
             </div>
@@ -394,30 +374,23 @@ I am your AI-powered location intelligence system.
   );
 }
 
-/* ================= FEATURE CARD =================
-   Now accepts an onClick handler to open the chat
-================================================== */
+/* ================= FEATURE CARD ================= */
 function FeatureCard({
   icon,
   title,
   description,
-  onClick,
 }: {
   icon: string;
   title: string;
   description: string;
-  onClick: () => void;
 }) {
   return (
     <div 
-      onClick={onClick}
-      className="glass p-5 text-left transition-all hover:-translate-y-1 hover:bg-white/40 cursor-pointer group"
+      className="glass p-5 text-left transition-all hover:-translate-y-1 hover:bg-white/40 group"
     >
       <div className="text-2xl mb-2 group-hover:scale-110 transition-transform">{icon}</div>
       <h3 className="font-medium text-slate-900 mb-1 flex items-center gap-2">
         {title}
-        {/* Small arrow to indicate action */}
-        <span className="text-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity">→</span>
       </h3>
       <p className="text-sm text-slate-600 leading-relaxed">
         {description}
@@ -425,12 +398,3 @@ function FeatureCard({
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
