@@ -98,8 +98,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from ag_ui_adk import ADKAgent, add_adk_fastapi_endpoint
 
 # 1. Setup Paths
-app_dir = Path(__file__).parent.parent.parent  # app/
-project_root = app_dir.parent  # retail-ai-location-strategy/
+app_dir = Path(__file__).parent.parent.parent
+project_root = app_dir.parent
 sys.path.insert(0, str(project_root))
 
 # 2. Load Env
@@ -117,7 +117,7 @@ except ImportError as e:
 # 4. Initialize Wrapper
 adk_agent = ADKAgent(
     adk_agent=root_agent,
-    app_name="locus",
+    app_name="locus",  # Matches the key in route.ts
     user_id="demo_user",
     execution_timeout_seconds=1800,
     tool_timeout_seconds=600,
@@ -131,17 +131,14 @@ app = FastAPI(
 )
 
 # 6. Unified CORS Configuration
-# allowing "*" is fine for testing, but in production you can restrict thithiss list
-origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "https://locus-ai.vercel.app",  # Example: Add your real Vercel domain here if known
-    "*"  # Allows all domains (easiest for initial setup)
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://locus-ai.vercel.app",  # Your Vercel domain (update if different)
+        "*"  # Allows all domains (easiest for initial setup)
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -155,6 +152,7 @@ async def health_check():
 add_adk_fastapi_endpoint(app, adk_agent, path="/")
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))
-    # In Cloud Run, PORT is set automatically. Locally it defaults to 8000.
+    port = int(os.environ.get("PORT", 8080))
+    # Note: Cloud Run expects 8080 by default in most containers
+    print(f"Starting AG-UI server on port {port}")
     uvicorn.run(app, host="0.0.0.0", port=port)

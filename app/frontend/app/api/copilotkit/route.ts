@@ -41,22 +41,30 @@
 import { NextRequest } from "next/server";
 import {
   CopilotRuntime,
+  ExperimentalEmptyAdapter,
   copilotRuntimeNextJSAppRouterEndpoint,
 } from "@copilotkit/runtime";
 import { LangGraphHttpAgent } from "@copilotkit/runtime/langgraph";
 
 export const runtime = "nodejs";
 
-const serviceAdapter = new LangGraphHttpAgent({
-  url: process.env.REMOTE_ACTION_URL || "http://localhost:8000",
-});
+// 1. Use Empty Adapter (The backend handles the intelligence)
+const serviceAdapter = new ExperimentalEmptyAdapter();
 
-const runtimeInstance = new CopilotRuntime();
+// 2. Define the Runtime and register your Remote Agent
+const runtimeInstance = new CopilotRuntime({
+  agents: {
+    locus: new LangGraphHttpAgent({
+      // "locus" must match the app_name="locus" in your main.py
+      url: process.env.REMOTE_ACTION_URL || "http://localhost:8000",
+    }),
+  },
+});
 
 export const POST = async (req: NextRequest) => {
   const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
     runtime: runtimeInstance,
-    serviceAdapter,
+    serviceAdapter, // Pass the adapter here, NOT the agent
     endpoint: "/api/copilotkit",
   });
 
