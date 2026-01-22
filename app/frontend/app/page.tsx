@@ -69,7 +69,7 @@ Provide your business idea and geographic region clearly and I will analyze the 
 - "Analyze Manhattan for a fitness studio"
 - "Best bakery location in Berlin"
 
-⚠️ **IMPORTANT:** After entering your query, **close this sidebar** via **X** button at the top right to see the **full-screen interactive report update live!**
+⚠️ **IMPORTANT**: Once your query is confirmed, you can **close this sidebar** using the **X** button (top-right) to instantly view the **full-screen interactive report** updating live
 `,
       }}
     >

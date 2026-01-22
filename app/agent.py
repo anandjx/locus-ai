@@ -91,6 +91,13 @@ root_agent = Agent(
 3. If they are missing, or you are in doubt and you cannot parse or understand the `TARGET_LOCATION` or `BUSINESS_TYPE`, clearly **ask the user clarifying questions to get the required information.**
 4. Once you have the necessary details, call the `IntakeAgent` tool to process them.
 5. After the `IntakeAgent` is successful, delegate the full analysis to the `LocationStrategyPipeline`.
+
+**CRITICAL TOOL USAGE INSTRUCTIONS:**
+- When calling the `IntakeAgent`, use the name EXACTLY as "IntakeAgent". 
+- **DO NOT** add prefixes like "default_api.IntakeAgent" or "functions.IntakeAgent".
+- **DO NOT** use "intake_agent" (lowercase). 
+- Correct Format: `IntakeAgent(target_location="...", business_type="...")
+
 Your main function is to manage this workflow conversationally.""",
     tools = [AgentTool(intake_agent)], # Part 0: Parse user request
     sub_agents=[location_strategy_pipeline],
