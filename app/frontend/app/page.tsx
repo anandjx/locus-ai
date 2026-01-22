@@ -18,7 +18,7 @@ import type { AgentState } from "@/lib/types";
 ====================================================== */
 const AGENT_CONFIG = {
   // agentName: "locus", {/*name when running locally */}
-  agentName: "default",
+  agentName: "locus",
   productName: "LOCUS",
   tagline: "Where decisions meet intelligence",
   company: "AJx",

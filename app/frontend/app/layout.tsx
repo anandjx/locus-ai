@@ -58,16 +58,18 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={inter.variable}>
-      {/* Added min-h-screen to ensure the chat interface 
-        has full height available on mobile/deployment 
-      */}
       <body className="min-h-screen bg-white text-black">
-        {/* CRITICAL CONFIGURATION NOTE:
-          We point runtimeUrl to our Next.js API route that houses the Vertex Adapter.
-          We DO NOT specify 'agent="locus"' here. The Vertex Adapter acts as the 
-          default handler. Specifying a name would cause a routing mismatch error.
+        {/* CRITICAL CONFIGURATION FIX:
+           We MUST set 'agent="locus"' here. 
+           
+           Why?
+           1. Your backend (route.ts) defines: agents: { locus: ... }
+           2. Your frontend (page.tsx) asks for: useCoAgent({ name: "locus" })
+           
+           If you leave this prop out, the chat UI tries to connect to an agent 
+           named "default", which doesn't exist on your server, causing the 404 error.
         */}
-        <CopilotKit runtimeUrl="/api/copilotkit">
+        <CopilotKit runtimeUrl="/api/copilotkit" agent="locus">
           {children}
         </CopilotKit>
       </body>
