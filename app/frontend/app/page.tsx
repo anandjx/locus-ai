@@ -64,8 +64,8 @@ Provide your **business idea** and **geographic region clearly** and I will anal
 **A fully structured HTML report will be delivered at the end of the analysis**.
 
 **Try examples:**
-- "Evaluate Downtown Toronto for a coworking space" 
-- "Open a coffee shop in Park Street, Kolkata"
+- "Coworking space in Viman Nagar, Pune" 
+- "Coffee shop in Park Street, Kolkata"
 - "Analyze Manhattan for a fitness studio"
 - "Best bakery location in Berlin"
 
